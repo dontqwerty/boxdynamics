@@ -48,9 +48,10 @@ BOUNDARIES_WIDTH = 10  # meters
 
 FLOAT_PRECISION = 9  # number of decimal digits to use for most calculations
 
-AGENT_HEAD_INSIDE = 10**(-1) # space in meters between agent edges and its head
-                             # it avoids wrong measures when the intersection
-                             # points are very close to the agent edges
+# space in meters between agent edges and its head
+# it avoids wrong measures when the intersection
+# points are very close to the agent edges
+AGENT_HEAD_INSIDE = 10**(-1)
 
 # action space
 MIN_ANGLE = -math.pi * 3 / 4  # radians
@@ -95,11 +96,13 @@ class ContactListener(b2ContactListener):
         b2ContactListener.__init__(self)
 
     def BeginContact(self, contact):
-        print("begin {} {}".format(contact.fixtureA.body.userData.type, contact.fixtureB.body.userData.type))
+        print("begin {} {}".format(contact.fixtureA.body.userData.type,
+              contact.fixtureB.body.userData.type))
         pass
 
     def EndContact(self, contact):
-        print("end {} {}".format(contact.fixtureA.body.userData.type, contact.fixtureB.body.userData.type))
+        print("end {} {}".format(contact.fixtureA.body.userData.type,
+              contact.fixtureB.body.userData.type))
         pass
 
     def PreSolve(self, contact, oldMainfold):
@@ -115,7 +118,8 @@ class BoxEnv(gym.Env):
         super(BoxEnv, self).__init__()
 
         # world keeps track of objects and physics
-        self.world = b2World(gravity=(0, 0), doSleep=True, contactListener=ContactListener())
+        self.world = b2World(gravity=(0, 0), doSleep=True,
+                             contactListener=ContactListener())
 
         # action space
         # relative agent_angle, force
@@ -216,9 +220,10 @@ class BoxEnv(gym.Env):
         self.screen.fill(BACKGROUND_COLOR)
 
         # Draw the world
-        bodies_levels = [[i, b.userData.level] for i, b in enumerate(self.world.bodies)]
-        bodies_levels.sort(key = lambda x: x[1], reverse=True)
-        
+        bodies_levels = [[i, b.userData.level]
+                         for i, b in enumerate(self.world.bodies)]
+        bodies_levels.sort(key=lambda x: x[1], reverse=True)
+
         for bix, level in bodies_levels:
             for fixture in self.world.bodies[bix].fixtures:
                 fixture.shape.draw(fixture, self.world.bodies[bix])
@@ -344,13 +349,6 @@ class BoxEnv(gym.Env):
                         valid_intersection = self.__check_intersection(
                             point1, point2, intersection)
 
-                        # if body.userData.type == BodyType.MOVING_OBSTACLE and valid_intersection:
-                        #     self.debug2.append(intersection)
-
-                        # if body.userData.type == BodyType.MOVING_OBSTACLE:
-                        #     self.debug.append([self.__pygame_coord(
-                        #         point1), self.__pygame_coord(point2)])
-
                         if valid_intersection:
                             # calculate distance of intersection point from agent head
                             distance = self.__euclidean_distance(
@@ -445,7 +443,8 @@ class BoxEnv(gym.Env):
             pygame.draw.line(self.screen, ACTION_COLOR, line[0], line[1])
 
         for point in self.debug2:
-            pygame.draw.circle(self.screen, INTERSECTION_COLOR, self.__pygame_coord(point), 5)
+            pygame.draw.circle(self.screen, INTERSECTION_COLOR,
+                               self.__pygame_coord(point), 5)
 
     def __draw_observations(self):
         text_font = pygame.font.SysFont('Comic Sans MS', 20)

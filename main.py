@@ -1,5 +1,4 @@
 from box_dynamics import BoxEnv
-from time import sleep
 
 # create enviroment with agent width and height in meters
 env = BoxEnv()
