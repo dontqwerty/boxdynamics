@@ -3,6 +3,7 @@ import random
 
 from enum import Enum
 from dataclasses import dataclass
+from turtle import position
 import numpy as np
 import gym
 import pygame
@@ -82,12 +83,18 @@ class BodyType(Enum):
     DEFAULT = 6
 
 
+class BodyShape(Enum):
+    BOX = 0
+    CIRCLE = 1
+
+
 @dataclass
 class BodyData:
     type: Enum = BodyType.DEFAULT
     color: tuple = COLOR_BLACK
+    shape: Enum = BodyShape.BOX
     # level of deepness when drawing screen (0 is above everything else)
-    # if multiple object share same level, first created objects are above
+    # if multiple object share same level, first created objects are below others
     level: int = 0
 
 
@@ -135,7 +142,7 @@ class BoxEnv(gym.Env):
             low=0, high=MAX_DISTANCE, shape=(OBSERVATION_NUM,)
         )
 
-        self.intersections = []
+        self.intersections = list()
 
         # pygame setup
         self.screen = pygame.display.set_mode(
@@ -156,8 +163,6 @@ class BoxEnv(gym.Env):
         b2PolygonShape.draw = self.__draw_polygon
 
         self.prev_state = None
-
-        self.debug2 = list()
 
     def reset(self):
         # resetting base class
@@ -202,6 +207,14 @@ class BoxEnv(gym.Env):
         self.state = self.__get_observations()
 
         self.prev_state = self.state
+
+        # changing moving direction of moving bodies if they touch the borders
+        # for body in self.world.bodies:
+        #     if body.userData.type == BodyType.MOVING_OBSTACLE or body.userData.type == BodyType.MOVING_ZONE:
+        #         r = math.sqrt(body.size[0]**2 + body.size[1]**2)
+        #         if body.position[1] + r > WORLD_HEIGHT or body.position[1] - r < 0:
+        #             body.linearVelocity = self.__point_mult(
+        #                 body.linearVelocity, -1)
 
         step_reward = 0
         done = False
@@ -249,26 +262,26 @@ class BoxEnv(gym.Env):
         self.bottom_boundary = self.world.CreateStaticBody(
             position=(WORLD_WIDTH / 2, inside - (BOUNDARIES_WIDTH / 2)),
             shapes=b2PolygonShape(box=(WORLD_WIDTH / 2, BOUNDARIES_WIDTH / 2)),
-            userData=BodyData(BodyType.BORDER, BORDER_COLOR)
+            userData=BodyData(BodyType.BORDER, BORDER_COLOR, 1)
         )
         self.top_boundary = self.world.CreateStaticBody(
             position=(WORLD_WIDTH / 2, WORLD_HEIGHT -
                       inside + (BOUNDARIES_WIDTH / 2)),
             shapes=b2PolygonShape(box=(WORLD_WIDTH / 2, BOUNDARIES_WIDTH / 2)),
-            userData=BodyData(BodyType.BORDER, BORDER_COLOR)
+            userData=BodyData(BodyType.BORDER, BORDER_COLOR, 1)
         )
         self.left_boundary = self.world.CreateStaticBody(
             position=(inside - (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2),
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2)),
-            userData=BodyData(BodyType.BORDER, BORDER_COLOR)
+            userData=BodyData(BodyType.BORDER, BORDER_COLOR, 1)
         )
         self.right_boundary = self.world.CreateStaticBody(
             position=(WORLD_WIDTH - inside +
                       (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2),
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2)),
-            userData=BodyData(BodyType.BORDER, BORDER_COLOR)
+            userData=BodyData(BodyType.BORDER, BORDER_COLOR, 1)
         )
 
     def __create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
@@ -308,7 +321,6 @@ class BoxEnv(gym.Env):
     def __get_observations(self):
         observations = list()
         self.intersections.clear()
-        self.debug = list()
 
         for delta_angle in range(OBSERVATION_NUM):
             # absolute angle for the observation vector
@@ -382,10 +394,22 @@ class BoxEnv(gym.Env):
     def get_world_size(self):
         return WORLD_WIDTH, WORLD_HEIGHT
 
+    def create_body(self, shape, pos, size, angle=0, moving=False, solid=False, level=1):
+        assert(shape in BodyShape)
+
+        if moving:
+            body = self.world.CreateDynamicBody(
+                position=pos, angle=angle, 
+            )
+
+        if shape == BodyShape.BOX:
+            pass
+        elif shape == BodyShape.CIRCLE:
+            pass
+
     def create_static_obstacle(self, pos, size, angle=0, level=1):
         body = self.world.CreateStaticBody(
             position=pos, angle=angle
-            # shapes=b2PolygonShape(box=size),
         )
         fixture = body.CreatePolygonFixture(
             box=size)
@@ -393,8 +417,9 @@ class BoxEnv(gym.Env):
         body.userData = BodyData(
             BodyType.STATIC_OBSTACLE, STATIC_OBSTACLE_COLOR, level)
 
-    def create_kinematic_obstacle(self, pos, size, velocity, angle=0, level=1):
-        body = self.world.CreateKinematicBody(
+    def create_moving_obstacle(self, pos, size, velocity, angle=0, level=1):
+        # body = self.world.CreateKinematicBody(
+        body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity,
             bullet=False)
         _ = body.CreatePolygonFixture(
@@ -413,8 +438,9 @@ class BoxEnv(gym.Env):
         body.userData = BodyData(
             BodyType.STATIC_ZONE, STATIC_ZONE_COLOR, level)
 
-    def create_kinematic_zone(self, pos, size, velocity, angle=0, level=1):
-        body = self.world.CreateKinematicBody(
+    def create_moving_zone(self, pos, size, velocity, angle=0, level=1):
+        # body = self.world.CreateKinematicBody(
+        body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity,
             bullet=False)
         fixture = body.CreatePolygonFixture(
@@ -438,13 +464,6 @@ class BoxEnv(gym.Env):
             self.__point_add(self.agent_head, self.action))
 
         pygame.draw.line(self.screen, ACTION_COLOR, action_start, action_end)
-
-        for line in self.debug:
-            pygame.draw.line(self.screen, ACTION_COLOR, line[0], line[1])
-
-        for point in self.debug2:
-            pygame.draw.circle(self.screen, INTERSECTION_COLOR,
-                               self.__pygame_coord(point), 5)
 
     def __draw_observations(self):
         text_font = pygame.font.SysFont('Comic Sans MS', 20)
