@@ -65,14 +65,15 @@ MAX_FORCE = 10
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
-DISTANCE_NUM = 5  # number of distance vectors
+OBSERVATION_NUM = 5  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2
 AGENT_LINEAR_DAMPING = 0.5
 
 # objects
-MOVING_OBSTACLE_DENSITY = 1000000000
+AGENT_MASS = 0.2 # kg
+MOVING_OBSTACLE_DENSITY = 1000000000 # kg/(m2)
 
 
 class BodyType(Enum):
@@ -103,6 +104,14 @@ class BodyData:
     # level of deepness when drawing screen (0 is above everything else)
     # if multiple object share same level, first created objects are below others
     level: int = 0
+
+@dataclass
+class Observation:
+    index: int = -1
+    angle: float = 0
+    intersection: tuple((float, float)) = (np.inf, np.inf)
+    distance: float = np.inf
+    body: BodyData = None
 
 
 class ContactListener(b2ContactListener):
@@ -160,28 +169,17 @@ class BoxEnv(gym.Env):
             np.array([MAX_ANGLE, MAX_FORCE]).astype(np.float32)
         )
 
-        # observation space
-        # 8 distance vectors for the agent to know
-        # where he is
-        # self.observation_space = gym.spaces.Box(
-        #     low=0, high=np.inf, shape=(DISTANCE_NUM,)
-        # )
-
-        # self.observation_space = gym.spaces.Box(
-        #     np.array([0]*DISTANCE_NUM).astype(np.float32),
-        #     np.array([np.inf]*DISTANCE_NUM).astype(np.float32)
-        # )
-
         self.observation_space = gym.spaces.Dict({
-            "distances": gym.spaces.Box(low=0, high=np.inf, shape=(DISTANCE_NUM,)),
+            "distances": gym.spaces.Box(low=0, high=np.inf, shape=(OBSERVATION_NUM,)),
             "types": gym.spaces.Tuple((
-                [gym.spaces.Discrete(len(BodyType))]*DISTANCE_NUM
+                [gym.spaces.Discrete(len(BodyType))]*OBSERVATION_NUM
             )),
             "position": gym.spaces.Box(low=-np.inf, high=np.inf, shape=(2,)),
-            "velocity": gym.spaces.Box(low=-np.inf, high=np.inf, shape=(2,))
+            "linear_velocity": gym.spaces.Box(low=-np.inf, high=np.inf, shape=(1,))
         })
 
-        self.intersections = list()
+        # it's like the observation space but with more informations
+        self.data = list() # list of Observation dataclasses
 
         # pygame setup
         self.screen = pygame.display.set_mode(
@@ -217,12 +215,7 @@ class BoxEnv(gym.Env):
         # calculate agent head point
         # TODO: support circles
         # TODO: support agent_head definition from outside class
-        self.agent_head = [
-            (self.agent_body.position[0] + math.cos(
-                self.agent_body.angle) * (self.agent_size[0] - AGENT_HEAD_INSIDE)),
-            (self.agent_body.position[1] + math.sin(
-                self.agent_body.angle) * (self.agent_size[0] - AGENT_HEAD_INSIDE))]
-        # self.agent_head = self.agent_body.position
+        self.__update_agent_head()
 
         if action is not None:
             # calculating where to apply force
@@ -245,8 +238,6 @@ class BoxEnv(gym.Env):
 
         self.state = self.__get_observations()
 
-        print(self.state)
-
         assert self.state in self.observation_space
 
         self.prev_state = self.state
@@ -259,6 +250,7 @@ class BoxEnv(gym.Env):
 
         done = False
         info = {}
+
         return self.state, step_reward, done, info
 
     def render(self):
@@ -286,6 +278,7 @@ class BoxEnv(gym.Env):
         #         fixture.shape.draw(fixture, body)
         self.__draw_action()
         self.__draw_observations()
+        self.__draw_text()
 
         pygame.display.flip()
         self.clock.tick(TARGET_FPS)
@@ -358,13 +351,12 @@ class BoxEnv(gym.Env):
 
         self.agent_size = (agent_width, agent_height)
 
-        mass = 0.1  # 1 kg for the agent
         area = agent_width * agent_height
 
         self.agent_body = self.world.CreateDynamicBody(
             position=agent_pos, angle=agent_angle)
         self.agent_fix = self.agent_body.CreatePolygonFixture(
-            box=(agent_width, agent_height), density=mass/area)
+            box=(agent_width, agent_height), density=AGENT_MASS/area)
 
         self.agent_body.userData = BodyData(
             type=BodyType.AGENT, color=AGENT_COLOR, on_contact=None, level=0)
@@ -372,26 +364,36 @@ class BoxEnv(gym.Env):
         self.agent_fix.body.angularDamping = AGENT_ANGULAR_DAMPING
         self.agent_fix.body.linearDamping = AGENT_LINEAR_DAMPING
 
-    def __get_observations(self):
-        observations = dict()
-        distances = list()
-        types = list()
-        self.intersections.clear()
+    def __update_agent_head(self):
+        self.agent_head = [
+            (self.agent_body.position[0] + math.cos(
+                self.agent_body.angle) * (self.agent_size[0] - AGENT_HEAD_INSIDE)),
+            (self.agent_body.position[1] + math.sin(
+                self.agent_body.angle) * (self.agent_size[0] - AGENT_HEAD_INSIDE))]
+        # self.agent_head = self.agent_body.position
 
-        for delta_angle in range(DISTANCE_NUM):
+    def __get_agent_velocity(self):
+        return math.sqrt(self.agent_body.linearVelocity[0]**2 + self.agent_body.linearVelocity[1]**2)
+
+    def __get_observation_angle(self, delta_angle):
+        return self.agent_body.angle - (OBSERVATION_RANGE / 2) + (OBSERVATION_RANGE /
+                                           (OBSERVATION_NUM - 1) * delta_angle)
+
+    def __get_observations(self):
+        self.data.clear()
+
+        for delta_angle in range(OBSERVATION_NUM):
             # absolute angle for the observation vector
             # based on OBSERVATION_RANGE
-            angle = self.agent_body.angle - \
-                (OBSERVATION_RANGE / 2) + (OBSERVATION_RANGE /
-                                           (DISTANCE_NUM - 1) * delta_angle)
+            angle = self.__get_observation_angle(delta_angle)
 
             # line equation coefficients for observation vector
             m1, n1 = self.__get_line_eq_angle(self.agent_head, angle)
 
             # finding closest intersection for current observation vector
-            shorter_distance = np.inf
-            shorter_intersection = [-1, -1]
-            body_type = BodyType.DEFAULT
+            state = dict()
+            observation = Observation()
+            observation.distance = np.inf
             for bix, body in enumerate(self.world.bodies):
                 if body.userData.type == BodyType.AGENT:
                     continue
@@ -412,47 +414,35 @@ class BoxEnv(gym.Env):
                         intersection = self.__get_intersection(
                             (m1, n1), (m2, n2))
 
-                        # check if intersection inside segment
+                        # calculate distance of intersection point from agent head
+                        distance = self.__euclidean_distance(
+                            self.agent_head, intersection)
+
+                        # check if intersection is valid
                         valid_intersection = self.__check_intersection(
-                            point1, point2, intersection)
+                            point1, point2, intersection, angle, distance)
 
-                        if valid_intersection:
-                            # calculate distance of intersection point from agent head
-                            distance = self.__euclidean_distance(
-                                self.agent_head, intersection)
+                        # look for the closest valid intersection point
+                        # the rest should not be visible to the agent
+                        if distance < observation.distance and valid_intersection:
+                            observation.index = delta_angle
+                            observation.angle = angle
+                            observation.body = body
+                            observation.distance = distance
+                            observation.intersection = intersection
 
-                            # calculating where the intersection point should be
-                            # based on current angle and distance
-                            # this avoids finding an intersection behind the agent
-                            # when the observation vector is actually going "forward"
-                            # from the agent perspective
-                            precision = 2
-                            point_x = round(self.agent_head[0] +
-                                            distance * math.cos(angle), precision)
-                            point_y = round(self.agent_head[1] +
-                                            distance * math.sin(angle), precision)
-                            if point_x == round(intersection[0], precision) and \
-                                    point_y == round(intersection[1], precision):
-                                # look for the closest valid intersection point
-                                # the rest should not be visible to the agent
-                                if distance < shorter_distance:
-                                    shorter_distance = distance
-                                    shorter_intersection = intersection
-                                    body_type = body.userData.type
             # no check here because since the world has borders, there should
             # always be at least one valid intersection point
-            self.intersections.append(shorter_intersection)
-            distances.append(shorter_distance)
-            types.append(body_type.value)
-            # np.append(distances, shorter_distance)
-            # np.append(types, body_type)
+            self.data.append(observation)
 
-        observations["distances"] = np.array(distances, dtype=np.float32, copy=True)
-        observations["types"] = np.array(types, copy=True)
-        observations["position"] = np.array(self.agent_body.position, dtype=np.float32, copy=True)
-        observations["velocity"] = np.array(self.agent_body.linearVelocity, dtype=np.float32, copy=True)
+            # filter info and return observation space
+            # speed should not go down by iterating again here
+            state["distances"] = np.array([observation.distance for observation in self.data], dtype=np.float32)
+            state["types"] = np.array([observation.body.userData.type.value for observation in self.data])
+            state["position"] = np.array(self.agent_body.position, dtype=np.float32)
+            state["linear_velocity"] = [self.__get_agent_velocity()]
 
-        return observations
+        return state
 
     # on contact functions
     def __on_contact_border(self, contact, this_body, other_body):
@@ -476,8 +466,8 @@ class BoxEnv(gym.Env):
     def __on_contact_static_zone(self, contact, this_body, other_body):
         if other_body.userData.type == BodyType.AGENT:
             this_body.userData.agent_contact = True
-            other_body.linearDamping = 0
-            other_body.angularDamping = 0
+            other_body.linearDamping = 1
+            # other_body.angularDamping = 0
 
     def __on_contact_moving_zone(self, contact, this_body, other_body):
         if other_body.userData.type == BodyType.AGENT:
@@ -567,36 +557,49 @@ class BoxEnv(gym.Env):
 
         pygame.draw.line(self.screen, ACTION_COLOR, action_start, action_end)
 
-    def __draw_observations(self):
+    def __draw_text(self):
         text_font = pygame.font.SysFont('Comic Sans MS', 20)
-        start_point = self.__pygame_coord(self.agent_head)
-        for iix, intersection in enumerate(self.intersections):
-            end_point = self.__pygame_coord(intersection)
 
-            # drawing observation vectors
-            pygame.draw.line(self.screen, OBSERVATION_COLOR,
-                             start_point, end_point)
-            # drawing intersection points
-            pygame.draw.circle(self.screen, INTERSECTION_COLOR, end_point, 3)
-
-            # drawing distance text
-            distance = round(self.state["distances"][iix], 1)
+        # drawing distance text
+        for observation in self.data:
+            distance = round(observation.distance, 1)
 
             text_point = self.__pygame_coord(
                 self.__point_add(
                     self.agent_head, self.__point_div(
-                        self.__point_sub(intersection, self.agent_head), 2
+                        self.__point_sub(observation.intersection, self.agent_head), 2
                     )
                 )
             )
-
             text_surface = text_font.render(
                 str(distance), False, COLOR_BLACK, COLOR_WHITE)
             self.screen.blit(text_surface, text_point)
+
+        # fps
         fps = round(self.clock.get_fps())
+        fps_point = (20, 30)
         text_surface = text_font.render(
             str(fps), True, COLOR_BLACK, COLOR_WHITE)
-        self.screen.blit(text_surface, (20, 30))
+        self.screen.blit(text_surface, fps_point)
+
+        # agent info
+        velocity = self.__get_agent_velocity()
+        agent_info = "Velocity: {}".format(round(velocity, 1))
+        text_surface = text_font.render(
+            agent_info, True, COLOR_BLACK, COLOR_WHITE
+        )
+        self.screen.blit(text_surface, (20,700))
+
+    def __draw_observations(self):
+        start_point = self.__pygame_coord(self.agent_head)
+        for observation in self.data:
+            end_point = self.__pygame_coord(observation.intersection)
+
+            # drawing observation vectors
+            pygame.draw.line(self.screen, observation.body.userData.color,
+                             start_point, end_point)
+            # drawing intersection points
+            pygame.draw.circle(self.screen, INTERSECTION_COLOR, end_point, 3)
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
@@ -608,7 +611,7 @@ class BoxEnv(gym.Env):
             math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2),
             FLOAT_PRECISION)
 
-    def __check_intersection(self, point1, point2, intersection):
+    def __check_intersection(self, point1, point2, intersection, angle, distance):
         x1 = round(point1[0], FLOAT_PRECISION)
         y1 = round(point1[1], FLOAT_PRECISION)
         x2 = round(point2[0], FLOAT_PRECISION)
@@ -626,7 +629,22 @@ class BoxEnv(gym.Env):
         if (yi >= y1 and yi <= y2) or (yi <= y1 and yi >= y2):
             y_inside = True
 
-        return x_inside and y_inside
+        # calculating where the intersection point should be
+        # based on current angle and distance
+        # this avoids finding an intersection behind the agent
+        # when the observation vector is actually going "forward"
+        # from the agent perspective
+        correct_direction = False
+        precision = 2
+        point_x = round(self.agent_head[0] +
+                        distance * math.cos(angle), precision)
+        point_y = round(self.agent_head[1] +
+                        distance * math.sin(angle), precision)
+        if point_x == round(intersection[0], precision) and point_y == round(intersection[1], precision):
+            correct_direction = True
+            pass
+
+        return x_inside and y_inside and correct_direction
 
     def __get_intersection(self, line1, line2):
         intersection = [-1, -1]
