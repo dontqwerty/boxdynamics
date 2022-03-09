@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 import gym
 import pygame
-from Box2D import b2World, b2PolygonShape, b2ContactListener, b2Shape
+from Box2D import b2World, b2PolygonShape, b2ContactListener, b2RayCastCallback, b2Vec2
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
@@ -61,7 +61,7 @@ MAX_FORCE = 10
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
-OBSERVATION_NUM = 5  # number of distance vectors
+OBSERVATION_NUM = 100  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2
@@ -150,6 +150,54 @@ class ContactListener(b2ContactListener):
     def PostSolve(self, contact, impulse):
         pass
 
+
+class RayCastClosestCallback(b2RayCastCallback):
+    """This callback finds the closest hit"""
+
+    def __repr__(self):
+        return 'Closest hit'
+
+    def __init__(self, **kwargs):
+        b2RayCastCallback.__init__(self, **kwargs)
+        self.fixture = None
+        self.hit = False
+
+    def ReportFixture(self, fixture, point, normal, fraction):
+        '''
+        Called for each fixture found in the query. You control how the ray
+        proceeds by returning a float that indicates the fractional length of
+        the ray. By returning 0, you set the ray length to zero. By returning
+        the current fraction, you proceed to find the closest point. By
+        returning 1, you continue with the original ray clipping. By returning
+        -1, you will filter out the current fixture (the ray will not hit it).
+        '''
+        self.hit = True
+        self.fixture = fixture
+        self.point = b2Vec2(point)
+        self.normal = b2Vec2(normal)
+        # NOTE: You will get this error:
+        #   "TypeError: Swig director type mismatch in output value of
+        #    type 'float32'"
+        # without returning a value
+        return fraction
+
+class RayCastAnyCallback(b2RayCastCallback):
+    """This callback finds any hit"""
+
+    def __repr__(self):
+        return 'Any hit'
+
+    def __init__(self, **kwargs):
+        b2RayCastCallback.__init__(self, **kwargs)
+        self.fixture = None
+        self.hit = False
+
+    def ReportFixture(self, fixture, point, normal, fraction):
+        self.hit = True
+        self.fixture = fixture
+        self.point = b2Vec2(point)
+        self.normal = b2Vec2(normal)
+        return 0.0
 
 class BoxEnv(gym.Env):
     def __init__(self) -> None:
@@ -428,8 +476,10 @@ class BoxEnv(gym.Env):
         return math.sqrt(self.agent_body.linearVelocity[0]**2 + self.agent_body.linearVelocity[1]**2)
 
     def __get_observation_angle(self, delta_angle):
-        return self.agent_body.angle - (OBSERVATION_RANGE / 2) + (OBSERVATION_RANGE /
-                                                                  (OBSERVATION_NUM - 1) * delta_angle)
+        try:
+            return self.agent_body.angle - (OBSERVATION_RANGE / 2) + (OBSERVATION_RANGE / (OBSERVATION_NUM - 1) * delta_angle)
+        except ZeroDivisionError:
+            return self.agent_body.angle
 
     def __get_observations(self):
         self.data.clear()
@@ -439,52 +489,25 @@ class BoxEnv(gym.Env):
             # based on OBSERVATION_RANGE
             angle = self.__get_observation_angle(delta_angle)
 
-            # line equation coefficients for observation vector
-            m1, n1 = self.__get_line_eq_angle(self.agent_head, angle)
+            end = (self.agent_head[0] + math.cos(angle) * 100, self.agent_head[1] + math.sin(angle) * 100)
 
-            # finding closest intersection for current observation vector
-            state = dict()
-            observation = Observation()
-            for bix, body in enumerate(self.world.bodies):
-                if body.userData.type == BodyType.AGENT:
-                    continue
-                for fix, fixture in enumerate(body.fixtures):
-                    # check for intersection between observation vector and
-                    # every line created by adjacent polygon vertices
-                    for vix in range(len(fixture.shape.vertices)):
-                        point1 = body.transform * fixture.shape.vertices[vix]
-                        point2 = body.transform * \
-                            fixture.shape.vertices[(
-                                vix + 1) % len(fixture.shape.vertices)]
+            callback = RayCastClosestCallback()
 
-                        # line equation coefficients for current segment
-                        m2, n2 = self.__get_line_eq(point1, point2)
+            self.world.RayCast(callback, self.agent_head, end)
 
-                        # get intersection point between observation vector
-                        # and segment line
-                        intersection = self.__get_intersection(
-                            (m1, n1), (m2, n2))
+            if hasattr(callback, "point"):
+                intersection = callback.point
+                distance = self.__euclidean_distance(
+                                self.agent_head, intersection)
 
-                        # calculate distance of intersection point from agent head
-                        distance = self.__euclidean_distance(
-                            self.agent_head, intersection)
+                observation = Observation()
+                observation.index = delta_angle
+                observation.angle = angle
+                observation.body = callback.fixture.body
+                observation.distance = distance
+                observation.intersection = intersection
 
-                        # check if intersection is valid
-                        valid_intersection = self.__check_intersection(
-                            point1, point2, intersection, angle, distance)
-
-                        # look for the closest valid intersection point
-                        # the rest should not be visible to the agent
-                        if distance < observation.distance and valid_intersection:
-                            observation.index = delta_angle
-                            observation.angle = angle
-                            observation.body = body
-                            observation.distance = distance
-                            observation.intersection = intersection
-
-            # no check here because since the world has borders, there should
-            # always be at least one valid intersection point
-            self.data.append(observation)
+                self.data.append(observation)
 
         # filter info and return observation space
         state = self.__set_observation_dict()
