@@ -3,13 +3,11 @@ import random
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Any
 import numpy as np
 import gym
 import pygame
-from Box2D import b2World, b2PolygonShape, b2ContactListener
+from Box2D import b2World, b2PolygonShape, b2ContactListener, b2Shape
 
-# TODO: if higher PPM, possible bugs with intersections
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
@@ -39,8 +37,6 @@ OBSERVATION_COLOR = COLOR_YELLOW
 INTERSECTION_COLOR = COLOR_RED
 
 # world
-# TODO: the resulting world sizes must be multiple of 10 or even 100
-# to avoid problems when calculating intersections
 WORLD_WIDTH = SCREEN_WIDTH / PPM  # meters
 WORLD_HEIGHT = SCREEN_HEIGHT / PPM
 
@@ -52,7 +48,7 @@ FLOAT_PRECISION = 9  # number of decimal digits to use for most calculations
 # it avoids wrong measures when the intersection
 # points are very close to the agent edges
 # TODO: check if needed
-AGENT_HEAD_INSIDE = 10**(-1)
+AGENT_HEAD_INSIDE = 0  # 10**(-1)
 
 # action space
 MIN_ANGLE = -math.pi * 3 / 4  # radians
@@ -72,8 +68,8 @@ AGENT_ANGULAR_DAMPING = 2
 AGENT_LINEAR_DAMPING = 0.5
 
 # objects
-AGENT_MASS = 0.2 # kg
-MOVING_OBSTACLE_DENSITY = 1000000000 # kg/(m2)
+AGENT_MASS = 0.2  # kg
+MOVING_OBSTACLE_DENSITY = 1000000000  # kg/(m2)
 
 
 class BodyType(Enum):
@@ -97,13 +93,15 @@ class BodyData:
     color: tuple = COLOR_BLACK
     shape: Enum = BodyShape.BOX
     velocity: tuple = (0, 0)  # used for moving bodies
-    on_contact: Any = None  # defines what happens when the body hits another body
-    off_contact: Any = None  # defines what happens when the body finish hitting another body
+    on_contact: None = None  # defines what happens when the body hits another body
+    # defines what happens when the body finish hitting another body
+    off_contact: None = None
     agent_contact: bool = False  # if the body is currently in contact with the agent
     reward: float = 0  # reward when agents hits the object
     # level of deepness when drawing screen (0 is above everything else)
     # if multiple object share same level, first created objects are below others
     level: int = 0
+
 
 @dataclass
 class Observation:
@@ -169,17 +167,12 @@ class BoxEnv(gym.Env):
             np.array([MAX_ANGLE, MAX_FORCE]).astype(np.float32)
         )
 
-        self.observation_space = gym.spaces.Dict({
-            "distances": gym.spaces.Box(low=0, high=np.inf, shape=(OBSERVATION_NUM,)),
-            "types": gym.spaces.Tuple((
-                [gym.spaces.Discrete(len(BodyType))]*OBSERVATION_NUM
-            )),
-            "position": gym.spaces.Box(low=-np.inf, high=np.inf, shape=(2,)),
-            "linear_velocity": gym.spaces.Box(low=-np.inf, high=np.inf, shape=(1,))
-        })
+        self.observation_keys = ["distances", "body_types", "position"] # , "body_velocities" , "linear_velocity", "velocity_mag"]
+
+        self.observation_space = gym.spaces.Dict(self.__get_observation_dict())
 
         # it's like the observation space but with more informations
-        self.data = list() # list of Observation dataclasses
+        self.data = list()  # list of Observation dataclasses
 
         # pygame setup
         self.screen = pygame.display.set_mode(
@@ -200,6 +193,62 @@ class BoxEnv(gym.Env):
         b2PolygonShape.draw = self.__draw_polygon
 
         self.prev_state = None
+
+    # returns a dictionary which can then be converted to a gym.spaces.Dict
+    # defines min, max, shape and of each observation key
+    def __get_observation_dict(self):
+        observation_dict = dict()
+
+        for key in self.observation_keys:
+            partial_dict = dict()
+            if key == "distances":
+                partial_dict = ({"distances": gym.spaces.Box(
+                    low=0, high=np.inf, shape=(OBSERVATION_NUM,))})
+            elif key == "body_types":
+                partial_dict = ({"body_types": gym.spaces.Tuple(
+                    ([gym.spaces.Discrete(len(BodyType))]*OBSERVATION_NUM))})
+            elif key == "body_velocities":
+                partial_dict = ({"body_velocities": gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(OBSERVATION_NUM, 2, ))})
+            elif key == "position":
+                partial_dict = ({"position": gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(2,))})
+            elif key == "linear_velocity":
+                partial_dict = ({"linear_velocity": gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(2,))})
+            elif key == "velocity_mag":
+                partial_dict = ({"velocity_mag": gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(1,))})
+
+            observation_dict.update(partial_dict)
+
+        return observation_dict
+
+    # returns a state wich is an "instance" of observation_space
+    # here is defined how each observation key in the observation space 
+    # dict should be set
+    def __set_observation_dict(self):
+        state = dict()
+        for key in self.observation_keys:
+            if key == "distances":
+                state["distances"] = np.array(
+                    [observation.distance for observation in self.data], dtype=np.float32)
+            elif key == "body_types":
+                state["body_types"] = np.array(
+                    [observation.body.userData.type.value for observation in self.data])
+            elif key == "body_velocities":
+                state["body_velocities"] = np.array(
+                    [observation.body.linearVelocity for observation in self.data], dtype=np.float32)
+            elif key == "position":
+                state["position"] = np.array(
+                    self.agent_body.position, dtype=np.float32)
+            elif key == "linear_velocity":
+                state["linear_velocity"] = np.array(
+                    self.agent_body.linearVelocity, dtype=np.float32)
+            elif key == "velocity_mag":
+                state["velocity_mag"] = [self.__get_agent_velocity()]
+
+        return state
 
     def reset(self):
         # resetting base class
@@ -235,6 +284,14 @@ class BoxEnv(gym.Env):
 
         # clear forces or they will stay permanently
         self.world.ClearForces()
+
+        # for body in self.world.bodies:
+        #     if body.userData.type == BodyType.AGENT:
+        #         continue
+        #     elif body.userData.type == BodyType.STATIC_ZONE or body.userData.type == BodyType.MOVING_ZONE:
+        #         a = body.fixtures[0].TestPoint(self.agent_head)
+        #         if (a):
+        #             print(body.userData)
 
         self.state = self.__get_observations()
 
@@ -331,15 +388,10 @@ class BoxEnv(gym.Env):
         )
 
     def __create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
-        # TODO: check for agent size
-        if agent_size is None:
-            pass
-
         agent_width, agent_height = agent_size
 
         # setting random initial position
         if agent_pos is None:
-            # TODO: support float initial position
             r = math.sqrt(agent_width**2 + agent_height**2)
             x = random.randint(int(r), int(WORLD_WIDTH - r))
             y = random.randint(int(r), int(WORLD_HEIGHT - r))
@@ -377,7 +429,7 @@ class BoxEnv(gym.Env):
 
     def __get_observation_angle(self, delta_angle):
         return self.agent_body.angle - (OBSERVATION_RANGE / 2) + (OBSERVATION_RANGE /
-                                           (OBSERVATION_NUM - 1) * delta_angle)
+                                                                  (OBSERVATION_NUM - 1) * delta_angle)
 
     def __get_observations(self):
         self.data.clear()
@@ -393,7 +445,6 @@ class BoxEnv(gym.Env):
             # finding closest intersection for current observation vector
             state = dict()
             observation = Observation()
-            observation.distance = np.inf
             for bix, body in enumerate(self.world.bodies):
                 if body.userData.type == BodyType.AGENT:
                     continue
@@ -435,12 +486,8 @@ class BoxEnv(gym.Env):
             # always be at least one valid intersection point
             self.data.append(observation)
 
-            # filter info and return observation space
-            # speed should not go down by iterating again here
-            state["distances"] = np.array([observation.distance for observation in self.data], dtype=np.float32)
-            state["types"] = np.array([observation.body.userData.type.value for observation in self.data])
-            state["position"] = np.array(self.agent_body.position, dtype=np.float32)
-            state["linear_velocity"] = [self.__get_agent_velocity()]
+        # filter info and return observation space
+        state = self.__set_observation_dict()
 
         return state
 
@@ -567,7 +614,8 @@ class BoxEnv(gym.Env):
             text_point = self.__pygame_coord(
                 self.__point_add(
                     self.agent_head, self.__point_div(
-                        self.__point_sub(observation.intersection, self.agent_head), 2
+                        self.__point_sub(
+                            observation.intersection, self.agent_head), 2
                     )
                 )
             )
@@ -588,7 +636,7 @@ class BoxEnv(gym.Env):
         text_surface = text_font.render(
             agent_info, True, COLOR_BLACK, COLOR_WHITE
         )
-        self.screen.blit(text_surface, (20,700))
+        self.screen.blit(text_surface, (20, 700))
 
     def __draw_observations(self):
         start_point = self.__pygame_coord(self.agent_head)
