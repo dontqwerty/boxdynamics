@@ -633,14 +633,6 @@ class BoxEnv(gym.Env):
         for observation in self.data:
             distance = round(observation.distance, 1)
 
-            # text_point = self.__pygame_coord(
-            #     self.__point_add(
-            #         self.agent_head, self.__point_div(
-            #             self.__point_sub(
-            #                 observation.intersection, self.agent_head), 2
-            #         )
-            #     )
-            # )
             text_point = self.__pygame_coord(self.agent_head + (observation.intersection - self.agent_head) / 2)
             text_surface = text_font.render(
                 str(distance), False, COLOR_BLACK, COLOR_WHITE)
