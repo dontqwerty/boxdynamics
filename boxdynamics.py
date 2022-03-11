@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 import gym
 import pygame
-from Box2D import b2Vec2, b2World, b2PolygonShape, b2ContactListener, b2RayCastCallback
+from Box2D import b2Vec2, b2World, b2Body, b2PolygonShape, b2ContactListener, b2RayCastCallback
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
@@ -60,7 +60,7 @@ MAX_FORCE = 10
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
 # TODO: resolve bug when distance not enough
-OBSERVATION_MAX_DISTANCE = 1000  # how far can the agent see
+OBSERVATION_MAX_DISTANCE = 10  # how far can the agent see
 OBSERVATION_NUM = 10  # number of distance vectors
 
 # agent frictions
@@ -107,11 +107,12 @@ class BodyData:
 
 @dataclass
 class Observation:
+    valid: bool = False
     index: int = -1
     angle: float = 0
     intersection: b2Vec2 = (np.inf, np.inf)
     distance: float = np.inf
-    body: BodyData = None
+    body: b2Body = None
 
 
 class ContactListener(b2ContactListener):
@@ -221,7 +222,6 @@ class BoxEnv(gym.Env):
         self.__create_borders()
 
         # adding dynamic body for RL agent
-        # self.__create_agent(agent_angle=2, agent_pos=[25, 20])
         # TODO: support agent parameters from ouside class
         self.__create_agent()
 
@@ -250,10 +250,10 @@ class BoxEnv(gym.Env):
         if action is not None:
             # calculating where to apply force
             # target -> "head" of agent
-            self.action = [action[1] *
-                           math.cos(action[0] + self.agent_body.angle),
-                           action[1] *
-                           math.sin(action[0] + self.agent_body.angle)]
+            self.action = b2Vec2(action[1] *
+                                 math.cos(action[0] + self.agent_body.angle),
+                                 action[1] *
+                                 math.sin(action[0] + self.agent_body.angle))
 
         done = self.__user_input()
 
@@ -267,6 +267,9 @@ class BoxEnv(gym.Env):
         self.world.ClearForces()
 
         self.state = self.__get_observations()
+
+        print(self.state)
+        print(self.observation_space.sample())
 
         assert self.state in self.observation_space
 
@@ -372,11 +375,20 @@ class BoxEnv(gym.Env):
                 state["distances"] = np.array(
                     [observation.distance for observation in self.data], dtype=np.float32)
             elif key == "body_types":
-                state["body_types"] = np.array(
-                    [observation.body.userData.type.value for observation in self.data])
+                state["body_types"] = tuple()
+                for observation in self.data:
+                    if observation.valid:
+                        state["body_types"] += (observation.body.userData.type.value,)
+                    else:
+                        state["body_types"] += (BodyType.DEFAULT.value,)
             elif key == "body_velocities":
-                state["body_velocities"] = np.array(
-                    [observation.body.linearVelocity for observation in self.data], dtype=np.float32)
+                state["body_velocities"] = np.array([])
+                for observation in self.data:
+                    if observation.valid:
+                        state["body_velocities"] = np.append(state["body_velocities"],
+                                  observation.body.linearVelocity)
+                    else:
+                        state["body_velocities"] = np.append(state["body_velocities"], b2Vec2(0, 0))
             elif key == "position":
                 state["position"] = np.array(
                     self.agent_body.position, dtype=np.float32)
@@ -386,8 +398,6 @@ class BoxEnv(gym.Env):
             elif key == "velocity_mag":
                 state["velocity_mag"] = [self.agent_body.linearVelocity.length]
             elif key == "inside_zone":
-                is_zone = [(body.userData.type == BodyType.STATIC_ZONE or body.userData.type ==
-                            BodyType.MOVING_ZONE) for body in self.world.bodies]
                 state["inside_zone"] = False
 
         return state
@@ -408,19 +418,25 @@ class BoxEnv(gym.Env):
 
             self.world.RayCast(callback, self.agent_head, observation_end)
 
-            if hasattr(callback, "point"):
-                intersection = callback.point
-                distance = self.__euclidean_distance(
-                    self.agent_head, intersection)
+            observation = Observation()
+            observation.valid = False
+            observation.index = delta_angle
+            observation.angle = angle
+            if callback.hit:
+                observation.valid = True
+                if hasattr(callback, "point"):
+                    observation.intersection = callback.point
+                    observation.distance = self.__euclidean_distance(
+                        self.agent_head, callback.point)
+                else:
+                    observation.valid = False
 
-                observation = Observation()
-                observation.index = delta_angle
-                observation.angle = angle
-                observation.body = callback.fixture.body
-                observation.distance = distance
-                observation.intersection = intersection
+                if hasattr(callback, "fixture"):
+                    observation.body = callback.fixture.body
+                else:
+                    observation.valid = False
 
-                self.data.append(observation)
+            self.data.append(observation)
 
         # filter info and return observation space
         state = self.__set_observation_dict()
@@ -496,7 +512,7 @@ class BoxEnv(gym.Env):
                               color=BORDER_COLOR, on_contact=self.__on_contact_border,
                               off_contact=self.__off_contact, level=1)
         )
-        print(self.bottom_border.fixtures[0])
+
         self.top_border = self.world.CreateStaticBody(
             position=(WORLD_WIDTH / 2, WORLD_HEIGHT -
                       inside + (BOUNDARIES_WIDTH / 2)),
@@ -627,13 +643,14 @@ class BoxEnv(gym.Env):
         # drawing distance text
         # TODO: only draw them if there is enough space
         for observation in self.data:
-            distance = round(observation.distance, 1)
+            if observation.valid:
+                distance = round(observation.distance, 1)
 
-            text_point = self.__pygame_coord(
-                self.agent_head + (observation.intersection - self.agent_head) / 2)
-            text_surface = text_font.render(
-                str(distance), False, COLOR_BLACK, COLOR_WHITE)
-            self.screen.blit(text_surface, text_point)
+                text_point = self.__pygame_coord(
+                    self.agent_head + (observation.intersection - self.agent_head) / 2)
+                text_surface = text_font.render(
+                    str(distance), False, COLOR_BLACK, COLOR_WHITE)
+                self.screen.blit(text_surface, text_point)
 
         # fps
         fps = round(self.clock.get_fps())
@@ -653,13 +670,14 @@ class BoxEnv(gym.Env):
     def __draw_observations(self):
         start_point = self.__pygame_coord(self.agent_head)
         for observation in self.data:
-            end_point = self.__pygame_coord(observation.intersection)
+            if observation.valid:
+                end_point = self.__pygame_coord(observation.intersection)
 
-            # drawing observation vectors
-            pygame.draw.line(self.screen, observation.body.userData.color,
-                             start_point, end_point)
-            # drawing intersection points
-            pygame.draw.circle(self.screen, INTERSECTION_COLOR, end_point, 3)
+                # drawing observation vectors
+                pygame.draw.line(self.screen, observation.body.userData.color,
+                                start_point, end_point)
+                # drawing intersection points
+                pygame.draw.circle(self.screen, INTERSECTION_COLOR, end_point, 3)
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
