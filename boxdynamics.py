@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 import gym
 import pygame
-from Box2D import b2World, b2PolygonShape, b2ContactListener, b2RayCastCallback, b2Vec2
+from Box2D import b2Vec2, b2World, b2PolygonShape, b2ContactListener, b2RayCastCallback
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
@@ -109,7 +109,7 @@ class BodyData:
 class Observation:
     index: int = -1
     angle: float = 0
-    intersection: tuple((float, float)) = (np.inf, np.inf)
+    intersection: b2Vec2 = (np.inf, np.inf)
     distance: float = np.inf
     body: BodyData = None
 
@@ -285,22 +285,6 @@ class BoxEnv(gym.Env):
 
         return self.state, step_reward, done, info
 
-    def __user_input(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or \
-                    (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                # The user closed the window or pressed escape
-                self.__destroy()
-                return True
-            # TODO: add commands description
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                self.manual_mode = not self.manual_mode
-        if self.manual_mode:
-            mouse_pos = b2Vec2(pygame.mouse.get_pos())
-            self.action = self.__world_coord(
-                mouse_pos) - self.agent_body.position
-        return False
-
     def render(self):
         # background for render screen
         self.screen.fill(BACKGROUND_COLOR)
@@ -325,6 +309,24 @@ class BoxEnv(gym.Env):
         for body in self.world.bodies:
             self.world.DestroyBody(body)
         pygame.quit()
+
+    def __user_input(self):
+        # TODO: create build mode in which the user can create bodies with
+        # graphical interface help
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or \
+                    (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                # The user closed the window or pressed escape
+                self.__destroy()
+                return True
+            # TODO: add commands description
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                self.manual_mode = not self.manual_mode
+        if self.manual_mode:
+            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            self.action = self.__world_coord(
+                mouse_pos) - self.agent_body.position
+        return False
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key
