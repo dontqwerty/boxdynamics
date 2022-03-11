@@ -496,6 +496,7 @@ class BoxEnv(gym.Env):
                               color=BORDER_COLOR, on_contact=self.__on_contact_border,
                               off_contact=self.__off_contact, level=1)
         )
+        print(self.bottom_border.fixtures[0])
         self.top_border = self.world.CreateStaticBody(
             position=(WORLD_WIDTH / 2, WORLD_HEIGHT -
                       inside + (BOUNDARIES_WIDTH / 2)),
