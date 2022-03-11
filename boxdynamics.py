@@ -59,8 +59,7 @@ MAX_FORCE = 10
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
-# TODO: resolve bug when distance not enough
-OBSERVATION_MAX_DISTANCE = 10  # how far can the agent see
+OBSERVATION_MAX_DISTANCE = 30  # how far can the agent see
 OBSERVATION_NUM = 10  # number of distance vectors
 
 # agent frictions
@@ -202,9 +201,8 @@ class BoxEnv(gym.Env):
 
         # TODO: inside_zone
         # the observation spaces is defined by observation_keys
-        # , "body_velocities" , "linear_velocity", "velocity_mag"]
         self.observation_keys = ["distances",
-                                 "body_types", "position", "inside_zone"]
+                                 "body_types", "position", "inside_zone", "body_velocities", "linear_velocity", "velocity_mag"]
 
         self.observation_space = gym.spaces.Dict(self.__get_observation_dict())
 
@@ -267,9 +265,6 @@ class BoxEnv(gym.Env):
         self.world.ClearForces()
 
         self.state = self.__get_observations()
-
-        print(self.state)
-        print(self.observation_space.sample())
 
         assert self.state in self.observation_space
 
@@ -378,17 +373,18 @@ class BoxEnv(gym.Env):
                 state["body_types"] = tuple()
                 for observation in self.data:
                     if observation.valid:
-                        state["body_types"] += (observation.body.userData.type.value,)
+                        state["body_types"] += (
+                            observation.body.userData.type.value,)
                     else:
                         state["body_types"] += (BodyType.DEFAULT.value,)
             elif key == "body_velocities":
-                state["body_velocities"] = np.array([])
+                state["body_velocities"] = list()
                 for observation in self.data:
                     if observation.valid:
-                        state["body_velocities"] = np.append(state["body_velocities"],
-                                  observation.body.linearVelocity)
+                        state["body_velocities"].append(observation.body.linearVelocity)
                     else:
-                        state["body_velocities"] = np.append(state["body_velocities"], b2Vec2(0, 0))
+                        state["body_velocities"].append(b2Vec2(0, 0))
+                state["body_velocities"] = np.array(state["body_velocities"], dtype=np.float32)
             elif key == "position":
                 state["position"] = np.array(
                     self.agent_body.position, dtype=np.float32)
@@ -410,7 +406,6 @@ class BoxEnv(gym.Env):
             # based on OBSERVATION_RANGE
             angle = self.__get_observation_angle(delta_angle)
 
-            # TODO: bugfix with smaller OBSERVATION_MAX_DISTANCE
             observation_end = (self.agent_head.x + math.cos(angle) * OBSERVATION_MAX_DISTANCE,
                                self.agent_head.y + math.sin(angle) * OBSERVATION_MAX_DISTANCE)
 
@@ -675,9 +670,10 @@ class BoxEnv(gym.Env):
 
                 # drawing observation vectors
                 pygame.draw.line(self.screen, observation.body.userData.color,
-                                start_point, end_point)
+                                 start_point, end_point)
                 # drawing intersection points
-                pygame.draw.circle(self.screen, INTERSECTION_COLOR, end_point, 3)
+                pygame.draw.circle(
+                    self.screen, INTERSECTION_COLOR, end_point, 3)
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
