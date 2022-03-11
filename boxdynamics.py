@@ -8,11 +8,6 @@ import gym
 import pygame
 from Box2D import b2Vec2, b2World, b2Body, b2PolygonShape, b2ContactListener, b2RayCastCallback
 
-TARGET_FPS = 60
-TIME_STEP = 1.0 / TARGET_FPS
-SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
-PPM = 10  # pixel per meter
-
 # colors
 COLOR_BLACK = (0, 0, 0, 0)
 COLOR_GREY = (128, 128, 128, 255)
@@ -25,7 +20,8 @@ COLOR_MAGENTA = (255, 0, 255, 255)
 COLOR_YELLOW = (255, 255, 0, 255)
 COLOR_WHITE = (255, 255, 255, 255)
 
-BACKGROUND_COLOR = COLOR_BLACK
+BACK_COLOR = COLOR_BLACK
+INFO_BACK_COLOR = COLOR_GREY
 AGENT_COLOR = COLOR_MAGENTA
 STATIC_OBSTACLE_COLOR = COLOR_GREY
 MOVING_OBSTACLE_COLOR = COLOR_YELLOW
@@ -36,9 +32,17 @@ ACTION_COLOR = COLOR_GREEN
 OBSERVATION_COLOR = COLOR_YELLOW
 INTERSECTION_COLOR = COLOR_RED
 
+TARGET_FPS = 60
+TIME_STEP = 1.0 / TARGET_FPS
+SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
+PPM = 10  # pixel per meter
+
+# screen layout
+INFO_HEIGHT = SCREEN_HEIGHT * 0.2 # pixels
+
 # world
 WORLD_WIDTH = SCREEN_WIDTH / PPM  # meters
-WORLD_HEIGHT = SCREEN_HEIGHT / PPM
+WORLD_HEIGHT = (SCREEN_HEIGHT - INFO_HEIGHT) / PPM
 
 BOUNDARIES_WIDTH = 10  # meters
 
@@ -59,7 +63,7 @@ MAX_FORCE = 10
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
-OBSERVATION_MAX_DISTANCE = 30  # how far can the agent see
+OBSERVATION_MAX_DISTANCE = 200  # how far can the agent see
 OBSERVATION_NUM = 10  # number of distance vectors
 
 # agent frictions
@@ -228,6 +232,8 @@ class BoxEnv(gym.Env):
 
         self.prev_state = None
 
+        self.screen_infos = list()
+
     def reset(self):
         # resetting base class
         super().reset()
@@ -277,6 +283,10 @@ class BoxEnv(gym.Env):
             if body.userData.agent_contact:
                 step_reward += body.userData.reward
 
+        self.screen_infos.clear()
+        self.screen_infos.append({"name": "velocity", "value": round(self.agent_body.linearVelocity.length, 1)})
+        self.screen_infos.append({"name": "angular velocity", "value": round(self.agent_body.angularVelocity, 1)})
+
         self.render()
 
         info = {}
@@ -285,7 +295,7 @@ class BoxEnv(gym.Env):
 
     def render(self):
         # background for render screen
-        self.screen.fill(BACKGROUND_COLOR)
+        self.screen.fill(BACK_COLOR)
 
         # Draw the world based on bodies levels
         bodies_levels = [[i, b.userData.level]
@@ -298,7 +308,9 @@ class BoxEnv(gym.Env):
 
         self.__draw_action()
         self.__draw_observations()
-        self.__draw_text()
+        self.__draw_distances()
+        # last for a reason
+        self.__draw_infos()
 
         pygame.display.flip()
         self.clock.tick(TARGET_FPS)
@@ -495,12 +507,12 @@ class BoxEnv(gym.Env):
             other_body.angularDamping = AGENT_ANGULAR_DAMPING
 
     def __create_borders(self):
-        inside = 0  # defines how much of the borders are visible
+        inside = 2  # defines how much of the borders are visible
 
         # TODO: add fixtures (?)
 
         self.bottom_border = self.world.CreateStaticBody(
-            position=(WORLD_WIDTH / 2, inside - (BOUNDARIES_WIDTH / 2)),
+            position=(WORLD_WIDTH / 2, inside - (BOUNDARIES_WIDTH / 2) + INFO_HEIGHT / PPM),
             shapes=b2PolygonShape(
                 box=(WORLD_WIDTH / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
             userData=BodyData(type=BodyType.BORDER,
@@ -509,7 +521,7 @@ class BoxEnv(gym.Env):
         )
 
         self.top_border = self.world.CreateStaticBody(
-            position=(WORLD_WIDTH / 2, WORLD_HEIGHT -
+            position=(WORLD_WIDTH / 2, WORLD_HEIGHT + (INFO_HEIGHT / PPM) -
                       inside + (BOUNDARIES_WIDTH / 2)),
             shapes=b2PolygonShape(
                 box=(WORLD_WIDTH / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
@@ -519,7 +531,7 @@ class BoxEnv(gym.Env):
         )
 
         self.left_border = self.world.CreateStaticBody(
-            position=(inside - (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2),
+            position=(inside - (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2 + (INFO_HEIGHT / PPM)),
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2 + BOUNDARIES_WIDTH)),
             userData=BodyData(type=BodyType.BORDER,
@@ -528,7 +540,7 @@ class BoxEnv(gym.Env):
         )
         self.right_border = self.world.CreateStaticBody(
             position=(WORLD_WIDTH - inside +
-                      (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2),
+                      (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2 + (INFO_HEIGHT / PPM)),
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2 + BOUNDARIES_WIDTH)),
             userData=BodyData(type=BodyType.BORDER,
@@ -544,7 +556,7 @@ class BoxEnv(gym.Env):
         if agent_pos is None:
             r = self.agent_size.length
             x = random.randint(int(r), int(WORLD_WIDTH - r))
-            y = random.randint(int(r), int(WORLD_HEIGHT - r))
+            y = random.randint(int(r), int(WORLD_HEIGHT - (INFO_HEIGHT / PPM) - r))
             agent_pos = b2Vec2(x, y)
 
         # setting random initial angle
@@ -632,8 +644,8 @@ class BoxEnv(gym.Env):
 
         pygame.draw.line(self.screen, ACTION_COLOR, action_start, action_end)
 
-    def __draw_text(self):
-        text_font = pygame.font.SysFont('Comic Sans MS', 20)
+    def __draw_distances(self):
+        text_font = pygame.font.SysFont('Comic Sans MS', 16)
 
         # drawing distance text
         # TODO: only draw them if there is enough space
@@ -647,21 +659,6 @@ class BoxEnv(gym.Env):
                     str(distance), False, COLOR_BLACK, COLOR_WHITE)
                 self.screen.blit(text_surface, text_point)
 
-        # fps
-        fps = round(self.clock.get_fps())
-        fps_point = (20, 30)
-        text_surface = text_font.render(
-            str(fps), True, COLOR_BLACK, COLOR_WHITE)
-        self.screen.blit(text_surface, fps_point)
-
-        # agent info
-        velocity = self.agent_body.linearVelocity.length
-        agent_info = "Velocity: {}".format(round(velocity, 1))
-        text_surface = text_font.render(
-            agent_info, True, COLOR_BLACK, COLOR_WHITE
-        )
-        self.screen.blit(text_surface, (20, 700))
-
     def __draw_observations(self):
         start_point = self.__pygame_coord(self.agent_head)
         for observation in self.data:
@@ -674,6 +671,45 @@ class BoxEnv(gym.Env):
                 # drawing intersection points
                 pygame.draw.circle(
                     self.screen, INTERSECTION_COLOR, end_point, 3)
+
+    def __draw_infos(self):
+        info_vertices = [(0,SCREEN_HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT - INFO_HEIGHT), (0, SCREEN_HEIGHT - INFO_HEIGHT)]
+        pygame.draw.polygon(self.screen, INFO_BACK_COLOR, info_vertices)
+
+        text_font = pygame.font.SysFont('Comic Sans MS', 20)
+
+        max_entry_width = 200
+        max_entry_height = 64
+        rows = 4
+        columns = 2
+        entry_width = min(SCREEN_WIDTH / columns, max_entry_width)
+        entry_height = min(INFO_HEIGHT / rows, max_entry_height)
+        row_space = (INFO_HEIGHT - entry_height*rows) / (rows - (1 if rows > 1 else 0)) # space in pixels between lines
+        column_space = (SCREEN_WIDTH - entry_width*columns) / (columns - (1 if columns > 1 else 0))
+
+        print(entry_width, entry_height)
+        print(row_space, column_space)
+
+        border = 10 # info border pixels
+        info_coord = b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border)
+
+        # fps
+        fps = round(self.clock.get_fps())
+        fps_point = (0, 0)
+        fps_color = COLOR_GREEN if abs(fps - TARGET_FPS) < 10 else COLOR_RED
+        text_surface = text_font.render(
+            str(fps), True, COLOR_BLACK, fps_color)
+        self.screen.blit(text_surface, fps_point)
+
+        # agent info
+        for iix, info in enumerate(self.screen_infos):
+            info_str = "{}: {}".format(info["name"], info["value"])
+            text_surface = text_font.render(
+                info_str, True, COLOR_BLACK, COLOR_WHITE
+            )
+            pos_inc = b2Vec2(0, iix*20)
+            pos = info_coord + pos_inc
+            self.screen.blit(text_surface, pos)
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
