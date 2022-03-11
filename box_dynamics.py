@@ -42,8 +42,6 @@ WORLD_HEIGHT = SCREEN_HEIGHT / PPM
 
 BOUNDARIES_WIDTH = 10  # meters
 
-FLOAT_PRECISION = 9  # number of decimal digits to use for most calculations
-
 # velocity and position iterations
 # higher values improve precision in
 # physics simulations
@@ -616,8 +614,6 @@ class BoxEnv(gym.Env):
 
     def __draw_action(self):
         action_start = self.__pygame_coord(self.agent_head)
-        # action_end = self.__pygame_coord(
-        #     self.__point_add(self.agent_head, self.action))
         action_end = self.__pygame_coord(self.agent_head + self.action)
 
         pygame.draw.line(self.screen, ACTION_COLOR, action_start, action_end)
@@ -626,6 +622,7 @@ class BoxEnv(gym.Env):
         text_font = pygame.font.SysFont('Comic Sans MS', 20)
 
         # drawing distance text
+        # TODO: only draw them if there is enough space
         for observation in self.data:
             distance = round(observation.distance, 1)
 
@@ -670,8 +667,4 @@ class BoxEnv(gym.Env):
 
     # utilities functions
     def __euclidean_distance(self, point1, point2):
-        # return round(
-        #     math.sqrt((point1.x - point2.x)**2 + (point1.y - point2.y)**2),
-        #     FLOAT_PRECISION)
-        # TODO: check if FLOAT_PRECISION needed
         return (point1 - point2).length
