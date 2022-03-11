@@ -13,16 +13,18 @@ TIME_STEP = 1.0 / TARGET_FPS
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
 PPM = 10  # pixel per meter
 
+MANUAL_MODE = True
+
 # colors
-COLOR_RED = (255, 0, 0, 255)
-COLOR_YELLOW = (255, 255, 0, 255)
+COLOR_BLACK = (0, 0, 0, 0)
+COLOR_GREY = (128, 128, 128, 255)
+COLOR_PURPLE = (128, 0, 255, 255)
+COLOR_BLUE = (0, 0, 255, 255)
 COLOR_GREEN = (0, 255, 0, 255)
 COLOR_TURQUOISE = (0, 255, 255, 255)
-COLOR_BLUE = (0, 0, 255, 255)
-COLOR_PURPLE = (127, 0, 255, 255)
+COLOR_RED = (255, 0, 0, 255)
 COLOR_MAGENTA = (255, 0, 255, 255)
-COLOR_GREY = (128, 128, 128, 255)
-COLOR_BLACK = (0, 0, 0, 0)
+COLOR_YELLOW = (255, 255, 0, 255)
 COLOR_WHITE = (255, 255, 255, 255)
 
 BACKGROUND_COLOR = COLOR_BLACK
@@ -44,11 +46,11 @@ BOUNDARIES_WIDTH = 10  # meters
 
 FLOAT_PRECISION = 9  # number of decimal digits to use for most calculations
 
-# space in meters between agent body edges and its head
-# it avoids wrong measures when the intersection
-# points are very close to the agent edges
-# TODO: check if needed
-AGENT_HEAD_INSIDE = 0  # 10**(-1)
+# velocity and position iterations
+# higher values improve precision in
+# physics simulations
+VEL_ITER = 6
+POS_ITER = 2
 
 # action space
 MIN_ANGLE = -math.pi * 3 / 4  # radians
@@ -61,11 +63,16 @@ MAX_FORCE = 10
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
-OBSERVATION_NUM = 100  # number of distance vectors
+# TODO: resolve bug when distance not enough
+OBSERVATION_MAX_DISTANCE = 1000  # how far can the agent see
+OBSERVATION_NUM = 10  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2
 AGENT_LINEAR_DAMPING = 0.5
+
+# corrections
+AGENT_HEAD_INSIDE = 0.2
 
 # objects
 AGENT_MASS = 0.2  # kg
@@ -92,7 +99,6 @@ class BodyData:
     type: Enum = BodyType.DEFAULT
     color: tuple = COLOR_BLACK
     shape: Enum = BodyShape.BOX
-    velocity: tuple = (0, 0)  # used for moving bodies
     on_contact: None = None  # defines what happens when the body hits another body
     # defines what happens when the body finish hitting another body
     off_contact: None = None
@@ -175,29 +181,8 @@ class RayCastClosestCallback(b2RayCastCallback):
         self.fixture = fixture
         self.point = b2Vec2(point)
         self.normal = b2Vec2(normal)
-        # NOTE: You will get this error:
-        #   "TypeError: Swig director type mismatch in output value of
-        #    type 'float32'"
-        # without returning a value
         return fraction
 
-class RayCastAnyCallback(b2RayCastCallback):
-    """This callback finds any hit"""
-
-    def __repr__(self):
-        return 'Any hit'
-
-    def __init__(self, **kwargs):
-        b2RayCastCallback.__init__(self, **kwargs)
-        self.fixture = None
-        self.hit = False
-
-    def ReportFixture(self, fixture, point, normal, fraction):
-        self.hit = True
-        self.fixture = fixture
-        self.point = b2Vec2(point)
-        self.normal = b2Vec2(normal)
-        return 0.0
 
 class BoxEnv(gym.Env):
     def __init__(self) -> None:
@@ -215,7 +200,12 @@ class BoxEnv(gym.Env):
             np.array([MAX_ANGLE, MAX_FORCE]).astype(np.float32)
         )
 
-        self.observation_keys = ["distances", "body_types", "position"] # , "body_velocities" , "linear_velocity", "velocity_mag"]
+        self.user_action = None
+
+        # the observation spaces is defined by observation_keys
+        # , "body_velocities" , "linear_velocity", "velocity_mag"]
+        self.observation_keys = ["distances",
+                                 "body_types", "position", "inside_zone"]
 
         self.observation_space = gym.spaces.Dict(self.__get_observation_dict())
 
@@ -267,13 +257,17 @@ class BoxEnv(gym.Env):
             elif key == "velocity_mag":
                 partial_dict = ({"velocity_mag": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(1,))})
+            elif key == "inside_zone":
+                # partial_dict = ({"inside_zone": gym.spaces.Tuple(
+                #     ([gym.spaces.Discrete(2)] * ZONES_NUM))})
+                partial_dict = ({"inside_zone": gym.spaces.Discrete(2)})
 
             observation_dict.update(partial_dict)
 
         return observation_dict
 
     # returns a state wich is an "instance" of observation_space
-    # here is defined how each observation key in the observation space 
+    # here is defined how each observation key in the observation space
     # dict should be set
     def __set_observation_dict(self):
         state = dict()
@@ -294,7 +288,11 @@ class BoxEnv(gym.Env):
                 state["linear_velocity"] = np.array(
                     self.agent_body.linearVelocity, dtype=np.float32)
             elif key == "velocity_mag":
-                state["velocity_mag"] = [self.__get_agent_velocity()]
+                state["velocity_mag"] = [self.__get_agent_velocity_mag()]
+            elif key == "inside_zone":
+                is_zone = [(body.userData.type == BodyType.STATIC_ZONE or body.userData.type ==
+                            BodyType.MOVING_ZONE) for body in self.world.bodies]
+                state["inside_zone"] = False
 
         return state
 
@@ -313,33 +311,28 @@ class BoxEnv(gym.Env):
         # TODO: support circles
         # TODO: support agent_head definition from outside class
         self.__update_agent_head()
+        self.action = b2Vec2(0, 0)
 
-        if action is not None:
+        if action is not None and not MANUAL_MODE:
             # calculating where to apply force
             # target -> "head" of agent
-            self.action = [action[1] *
-                           math.cos(action[0] + self.agent_body.angle),
-                           action[1] *
-                           math.sin(action[0] + self.agent_body.angle)]
+            self.action = [action.y *
+                           math.cos(action.x + self.agent_body.angle),
+                           action.y *
+                           math.sin(action.x + self.agent_body.angle)]
 
-            self.agent_body.ApplyForce(
-                force=self.action, point=self.agent_head, wake=True)
+        done = self.__user_input()
+
+        self.agent_body.ApplyForce(
+            force=self.action, point=self.agent_head, wake=True)
 
         # Make Box2D simulate the physics of our world for one step.
         # vel_iters, pos_iters = 6, 2
         # world.Step(timeStep, vel_iters, pos_iters)
-        self.world.Step(TIME_STEP, 10, 10)
+        self.world.Step(TIME_STEP, VEL_ITER, POS_ITER)
 
         # clear forces or they will stay permanently
         self.world.ClearForces()
-
-        # for body in self.world.bodies:
-        #     if body.userData.type == BodyType.AGENT:
-        #         continue
-        #     elif body.userData.type == BodyType.STATIC_ZONE or body.userData.type == BodyType.MOVING_ZONE:
-        #         a = body.fixtures[0].TestPoint(self.agent_head)
-        #         if (a):
-        #             print(body.userData)
 
         self.state = self.__get_observations()
 
@@ -349,23 +342,30 @@ class BoxEnv(gym.Env):
 
         step_reward = 0
 
+        # TODO: include in effects
         for body in self.world.bodies:
             if body.userData.agent_contact:
                 step_reward += body.userData.reward
 
-        done = False
+        self.render()
+
         info = {}
 
         return self.state, step_reward, done, info
 
-    def render(self):
+    def __user_input(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT or \
                     (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 # The user closed the window or pressed escape
                 self.__destroy()
-                return False
+                return True
+        if MANUAL_MODE:
+            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            self.action = self.__world_coord(mouse_pos) - self.agent_body.position
+        return False
 
+    def render(self):
         # background for render screen
         self.screen.fill(BACKGROUND_COLOR)
 
@@ -387,7 +387,6 @@ class BoxEnv(gym.Env):
 
         pygame.display.flip()
         self.clock.tick(TARGET_FPS)
-        return True
 
     def __destroy(self):
         for body in self.world.bodies:
@@ -437,19 +436,18 @@ class BoxEnv(gym.Env):
 
     def __create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
         agent_width, agent_height = agent_size
+        self.agent_size = b2Vec2(agent_width, agent_height)
 
         # setting random initial position
         if agent_pos is None:
-            r = math.sqrt(agent_width**2 + agent_height**2)
+            r = self.agent_size.length
             x = random.randint(int(r), int(WORLD_WIDTH - r))
             y = random.randint(int(r), int(WORLD_HEIGHT - r))
-            agent_pos = (x, y)
+            agent_pos = b2Vec2(x, y)
 
         # setting random initial angle
         if agent_angle is None:
             agent_angle = random.random() * (2*math.pi)
-
-        self.agent_size = (agent_width, agent_height)
 
         area = agent_width * agent_height
 
@@ -465,15 +463,16 @@ class BoxEnv(gym.Env):
         self.agent_fix.body.linearDamping = AGENT_LINEAR_DAMPING
 
     def __update_agent_head(self):
-        self.agent_head = [
-            (self.agent_body.position[0] + math.cos(
-                self.agent_body.angle) * (self.agent_size[0] - AGENT_HEAD_INSIDE)),
-            (self.agent_body.position[1] + math.sin(
-                self.agent_body.angle) * (self.agent_size[0] - AGENT_HEAD_INSIDE))]
+        # TODO: define agent head types and let the user choose
+        self.agent_head = b2Vec2(
+            (self.agent_body.position.x + math.cos(
+                self.agent_body.angle) * (self.agent_size.x - AGENT_HEAD_INSIDE)),
+            (self.agent_body.position.y + math.sin(
+                self.agent_body.angle) * (self.agent_size.x - AGENT_HEAD_INSIDE)))
         # self.agent_head = self.agent_body.position
 
-    def __get_agent_velocity(self):
-        return math.sqrt(self.agent_body.linearVelocity[0]**2 + self.agent_body.linearVelocity[1]**2)
+    def __get_agent_velocity_mag(self):
+        return self.agent_body.linearVelocity.length
 
     def __get_observation_angle(self, delta_angle):
         try:
@@ -489,16 +488,18 @@ class BoxEnv(gym.Env):
             # based on OBSERVATION_RANGE
             angle = self.__get_observation_angle(delta_angle)
 
-            end = (self.agent_head[0] + math.cos(angle) * 100, self.agent_head[1] + math.sin(angle) * 100)
+            # TODO: bugfix with smaller OBSERVATION_MAX_DISTANCE
+            observation_end = (self.agent_head.x + math.cos(angle) * OBSERVATION_MAX_DISTANCE,
+                               self.agent_head.y + math.sin(angle) * OBSERVATION_MAX_DISTANCE)
 
             callback = RayCastClosestCallback()
 
-            self.world.RayCast(callback, self.agent_head, end)
+            self.world.RayCast(callback, self.agent_head, observation_end)
 
             if hasattr(callback, "point"):
                 intersection = callback.point
                 distance = self.__euclidean_distance(
-                                self.agent_head, intersection)
+                    self.agent_head, intersection)
 
                 observation = Observation()
                 observation.index = delta_angle
@@ -525,13 +526,11 @@ class BoxEnv(gym.Env):
 
     def __on_contact_moving_obstacle(self, contact, this_body, other_body):
         if other_body.userData.type == BodyType.AGENT:
-            this_body.linearVelocity = this_body.userData.velocity
             this_body.userData.agent_contact = True
         elif other_body.userData.type == BodyType.MOVING_ZONE or other_body.userData.type == BodyType.STATIC_ZONE:
             return
         else:
-            this_body.linearVelocity = this_body.userData.velocity = self.__point_mult(
-                this_body.userData.velocity, -1)
+            this_body.linearVelocity = this_body.linearVelocity * -1
 
     def __on_contact_static_zone(self, contact, this_body, other_body):
         if other_body.userData.type == BodyType.AGENT:
@@ -543,8 +542,7 @@ class BoxEnv(gym.Env):
         if other_body.userData.type == BodyType.AGENT:
             this_body.userData.agent_contact = True
         if other_body.userData.type == BodyType.BORDER:
-            this_body.linearVelocity = this_body.userData.velocity = self.__point_mult(
-                this_body.userData.velocity, -1)
+            this_body.linearVelocity = this_body.linearVelocity * -1
 
     def __off_contact(self, contact, this_body, other_body):
         if other_body.userData.type == BodyType.AGENT:
@@ -584,7 +582,7 @@ class BoxEnv(gym.Env):
 
         body.userData = BodyData(
             type=BodyType.MOVING_OBSTACLE, color=MOVING_OBSTACLE_COLOR,
-            velocity=velocity, on_contact=self.__on_contact_moving_obstacle,
+            on_contact=self.__on_contact_moving_obstacle,
             off_contact=self.__off_contact, reward=reward, level=level)
 
     def create_static_zone(self, pos, size, angle=0, reward=1, level=3):
@@ -609,7 +607,7 @@ class BoxEnv(gym.Env):
         fixture.sensor = True
 
         body.userData = BodyData(
-            type=BodyType.MOVING_ZONE, color=MOVING_ZONE_COLOR, velocity=velocity,
+            type=BodyType.MOVING_ZONE, color=MOVING_ZONE_COLOR,
             on_contact=self.__on_contact_moving_zone,
             off_contact=self.__off_contact, reward=reward, level=level)
 
@@ -622,8 +620,9 @@ class BoxEnv(gym.Env):
 
     def __draw_action(self):
         action_start = self.__pygame_coord(self.agent_head)
-        action_end = self.__pygame_coord(
-            self.__point_add(self.agent_head, self.action))
+        # action_end = self.__pygame_coord(
+        #     self.__point_add(self.agent_head, self.action))
+        action_end = self.__pygame_coord(self.agent_head + self.action)
 
         pygame.draw.line(self.screen, ACTION_COLOR, action_start, action_end)
 
@@ -634,14 +633,15 @@ class BoxEnv(gym.Env):
         for observation in self.data:
             distance = round(observation.distance, 1)
 
-            text_point = self.__pygame_coord(
-                self.__point_add(
-                    self.agent_head, self.__point_div(
-                        self.__point_sub(
-                            observation.intersection, self.agent_head), 2
-                    )
-                )
-            )
+            # text_point = self.__pygame_coord(
+            #     self.__point_add(
+            #         self.agent_head, self.__point_div(
+            #             self.__point_sub(
+            #                 observation.intersection, self.agent_head), 2
+            #         )
+            #     )
+            # )
+            text_point = self.__pygame_coord(self.agent_head + (observation.intersection - self.agent_head) / 2)
             text_surface = text_font.render(
                 str(distance), False, COLOR_BLACK, COLOR_WHITE)
             self.screen.blit(text_surface, text_point)
@@ -654,7 +654,7 @@ class BoxEnv(gym.Env):
         self.screen.blit(text_surface, fps_point)
 
         # agent info
-        velocity = self.__get_agent_velocity()
+        velocity = self.__get_agent_velocity_mag()
         agent_info = "Velocity: {}".format(round(velocity, 1))
         text_surface = text_font.render(
             agent_info, True, COLOR_BLACK, COLOR_WHITE
@@ -674,92 +674,15 @@ class BoxEnv(gym.Env):
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
-        return [point[0] * PPM, SCREEN_HEIGHT - (point[1] * PPM)]
+        return b2Vec2(point.x * PPM, SCREEN_HEIGHT - (point.y * PPM))
+
+    def __world_coord(self, point):
+        return b2Vec2(point.x / PPM, (SCREEN_HEIGHT - point.y) / PPM)
 
     # utilities functions
     def __euclidean_distance(self, point1, point2):
-        return round(
-            math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2),
-            FLOAT_PRECISION)
-
-    def __check_intersection(self, point1, point2, intersection, angle, distance):
-        x1 = round(point1[0], FLOAT_PRECISION)
-        y1 = round(point1[1], FLOAT_PRECISION)
-        x2 = round(point2[0], FLOAT_PRECISION)
-        y2 = round(point2[1], FLOAT_PRECISION)
-
-        xi = round(intersection[0], FLOAT_PRECISION)
-        yi = round(intersection[1], FLOAT_PRECISION)
-
-        x_inside = False
-        y_inside = False
-
-        if (xi >= x1 and xi <= x2) or (xi <= x1 and xi >= x2):
-            x_inside = True
-
-        if (yi >= y1 and yi <= y2) or (yi <= y1 and yi >= y2):
-            y_inside = True
-
-        # calculating where the intersection point should be
-        # based on current angle and distance
-        # this avoids finding an intersection behind the agent
-        # when the observation vector is actually going "forward"
-        # from the agent perspective
-        correct_direction = False
-        precision = 2
-        point_x = round(self.agent_head[0] +
-                        distance * math.cos(angle), precision)
-        point_y = round(self.agent_head[1] +
-                        distance * math.sin(angle), precision)
-        if point_x == round(intersection[0], precision) and point_y == round(intersection[1], precision):
-            correct_direction = True
-            pass
-
-        return x_inside and y_inside and correct_direction
-
-    def __get_intersection(self, line1, line2):
-        intersection = [-1, -1]
-
-        a1 = line1[0]
-        b1 = -1
-        c1 = line1[1]
-
-        a2 = line2[0]
-        b2 = -1
-        c2 = line2[1]
-
-        intersection[0] = (b1*c2 - b2*c1) / (a1*b2 - a2*b1)
-        intersection[1] = (c1*a2 - c2*a1) / (a1*b2 - a2*b1)
-
-        return intersection
-
-    def __get_line_eq_angle(self, point, angle):
-        # m*x + n = y
-        m = math.tan(angle)
-        n = point[1] - m*point[0]
-
-        return m, n
-
-    def __get_line_eq(self, point1, point2):
-        try:
-            m = (point1[1] - point2[1]) / (point1[0] - point2[0])
-        except ZeroDivisionError:
-            if point1[1] > point2[1]:
-                m = math.tan(math.pi/2)
-            else:
-                m = math.tan(math.pi*3/2)
-
-        n = point1[1] - (m*point1[0])
-        return m, n
-
-    def __point_add(self, point1, point2):
-        return [point1[0] + point2[0], point1[1] + point2[1]]
-
-    def __point_sub(self, point1, point2):
-        return [point1[0] - point2[0], point1[1] - point2[1]]
-
-    def __point_mult(self, point, scalar):
-        return [point[0] * scalar, point[1] * scalar]
-
-    def __point_div(self, point, scalar):
-        return [point[0] / scalar, point[1] / scalar]
+        # return round(
+        #     math.sqrt((point1.x - point2.x)**2 + (point1.y - point2.y)**2),
+        #     FLOAT_PRECISION)
+        # TODO: check if FLOAT_PRECISION needed
+        return (point1 - point2).length

@@ -23,12 +23,9 @@ env.create_static_obstacle((30,40), (10,3))
 env.create_static_zone((60,60), (10,10))
 env.create_static_zone((30,30), (5,50))
 
-import math
 action = env.action_space.sample()
 action[0] = 0
 action[1] = 0.0001
-
-import math
 
 counter = 0
 total_reward = 0
@@ -39,11 +36,6 @@ while True:
     if step_reward:
         # print("state: {}, step_reward: {}, done: {}, info: {}".format(state, step_reward, done, info))
         total_reward += step_reward
-        # print(total_reward)
-    # if counter > 10:
-    #     action = [0,0]
-        # input()
-    env.reset()
-    if not env.render():
+    if done:
+        print("done")
         break
-    counter += 1

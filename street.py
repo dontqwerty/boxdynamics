@@ -38,19 +38,13 @@ env.create_static_zone((20, 9.5), (1,1))
 # env.create_static_zone((30,30), (5,50))
 
 action = env.action_space.sample()
-action[0] = 0
-action[1] = 0.0001
 
-counter = 0
-total_reward = 0
 while True:
     action = env.action_space.sample()
     state, step_reward, done, info = env.step(action=action)
-    if step_reward:
-        # print("state: {}, step_reward: {}, done: {}, info: {}".format(state, step_reward, done, info))
-        total_reward += step_reward
-        # print(total_reward)
-    env.reset()
-    if not env.render():
+    # env.reset()
+    env.render()
+
+    if done:
+        print("done")
         break
-    counter += 1
