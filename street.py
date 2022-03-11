@@ -1,4 +1,4 @@
-from box_dynamics import BoxEnv
+from boxenv.boxdynamics import BoxEnv
 
 # create enviroment with agent width and height in meters
 env = BoxEnv()
