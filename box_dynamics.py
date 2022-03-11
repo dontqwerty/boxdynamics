@@ -13,8 +13,6 @@ TIME_STEP = 1.0 / TARGET_FPS
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
 PPM = 10  # pixel per meter
 
-MANUAL_MODE = True
-
 # colors
 COLOR_BLACK = (0, 0, 0, 0)
 COLOR_GREY = (128, 128, 128, 255)
@@ -201,7 +199,9 @@ class BoxEnv(gym.Env):
         )
 
         self.user_action = None
+        self.manual_mode = False
 
+        # TODO: inside_zone
         # the observation spaces is defined by observation_keys
         # , "body_velocities" , "linear_velocity", "velocity_mag"]
         self.observation_keys = ["distances",
@@ -231,6 +231,102 @@ class BoxEnv(gym.Env):
         b2PolygonShape.draw = self.__draw_polygon
 
         self.prev_state = None
+
+    def reset(self):
+        # resetting base class
+        super().reset()
+
+        # resetting reward
+        self.reward = 0.0
+
+        # returning state after step with None action
+        return self.step(None)[0]
+
+    def step(self, action) -> tuple:
+        # calculate agent head point
+        # TODO: support circles
+        # TODO: support agent_head definition from outside class
+        self.__update_agent_head()
+        self.action = b2Vec2(0, 0)
+
+        if action is not None:
+            # calculating where to apply force
+            # target -> "head" of agent
+            self.action = [action[1] *
+                           math.cos(action[0] + self.agent_body.angle),
+                           action[1] *
+                           math.sin(action[0] + self.agent_body.angle)]
+
+        done = self.__user_input()
+
+        self.agent_body.ApplyForce(
+            force=self.action, point=self.agent_head, wake=True)
+
+        # Make Box2D simulate the physics of our world for one step.
+        self.world.Step(TIME_STEP, VEL_ITER, POS_ITER)
+
+        # clear forces or they will stay permanently
+        self.world.ClearForces()
+
+        self.state = self.__get_observations()
+
+        assert self.state in self.observation_space
+
+        self.prev_state = self.state
+
+        step_reward = 0
+
+        # TODO: include in effects
+        for body in self.world.bodies:
+            if body.userData.agent_contact:
+                step_reward += body.userData.reward
+
+        self.render()
+
+        info = {}
+
+        return self.state, step_reward, done, info
+
+    def __user_input(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or \
+                    (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                # The user closed the window or pressed escape
+                self.__destroy()
+                return True
+            # TODO: add commands description
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                self.manual_mode = not self.manual_mode
+        if self.manual_mode:
+            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            self.action = self.__world_coord(
+                mouse_pos) - self.agent_body.position
+        return False
+
+    def render(self):
+        # background for render screen
+        self.screen.fill(BACKGROUND_COLOR)
+
+        # Draw the world based on bodies levels
+        bodies_levels = [[i, b.userData.level]
+                         for i, b in enumerate(self.world.bodies)]
+        bodies_levels.sort(key=lambda x: x[1], reverse=True)
+
+        for bix, level in bodies_levels:
+            for fixture in self.world.bodies[bix].fixtures:
+                fixture.shape.draw(fixture, self.world.bodies[bix])
+
+        self.__draw_action()
+        self.__draw_observations()
+        self.__draw_text()
+
+        pygame.display.flip()
+        self.clock.tick(TARGET_FPS)
+
+    def __destroy(self):
+        for body in self.world.bodies:
+            self.world.DestroyBody(body)
+        pygame.quit()
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key
@@ -288,7 +384,7 @@ class BoxEnv(gym.Env):
                 state["linear_velocity"] = np.array(
                     self.agent_body.linearVelocity, dtype=np.float32)
             elif key == "velocity_mag":
-                state["velocity_mag"] = [self.__get_agent_velocity_mag()]
+                state["velocity_mag"] = [self.agent_body.linearVelocity.length]
             elif key == "inside_zone":
                 is_zone = [(body.userData.type == BodyType.STATIC_ZONE or body.userData.type ==
                             BodyType.MOVING_ZONE) for body in self.world.bodies]
@@ -296,102 +392,96 @@ class BoxEnv(gym.Env):
 
         return state
 
-    def reset(self):
-        # resetting base class
-        super().reset()
+    def __get_observations(self):
+        self.data.clear()
 
-        # resetting reward
-        self.reward = 0.0
+        for delta_angle in range(OBSERVATION_NUM):
+            # absolute angle for the observation vector
+            # based on OBSERVATION_RANGE
+            angle = self.__get_observation_angle(delta_angle)
 
-        # returning state after step with None action
-        return self.step(None)[0]
+            # TODO: bugfix with smaller OBSERVATION_MAX_DISTANCE
+            observation_end = (self.agent_head.x + math.cos(angle) * OBSERVATION_MAX_DISTANCE,
+                               self.agent_head.y + math.sin(angle) * OBSERVATION_MAX_DISTANCE)
 
-    def step(self, action) -> tuple:
-        # calculate agent head point
-        # TODO: support circles
-        # TODO: support agent_head definition from outside class
-        self.__update_agent_head()
-        self.action = b2Vec2(0, 0)
+            callback = RayCastClosestCallback()
 
-        if action is not None and not MANUAL_MODE:
-            # calculating where to apply force
-            # target -> "head" of agent
-            self.action = [action.y *
-                           math.cos(action.x + self.agent_body.angle),
-                           action.y *
-                           math.sin(action.x + self.agent_body.angle)]
+            self.world.RayCast(callback, self.agent_head, observation_end)
 
-        done = self.__user_input()
+            if hasattr(callback, "point"):
+                intersection = callback.point
+                distance = self.__euclidean_distance(
+                    self.agent_head, intersection)
 
-        self.agent_body.ApplyForce(
-            force=self.action, point=self.agent_head, wake=True)
+                observation = Observation()
+                observation.index = delta_angle
+                observation.angle = angle
+                observation.body = callback.fixture.body
+                observation.distance = distance
+                observation.intersection = intersection
 
-        # Make Box2D simulate the physics of our world for one step.
-        # vel_iters, pos_iters = 6, 2
-        # world.Step(timeStep, vel_iters, pos_iters)
-        self.world.Step(TIME_STEP, VEL_ITER, POS_ITER)
+                self.data.append(observation)
 
-        # clear forces or they will stay permanently
-        self.world.ClearForces()
+        # filter info and return observation space
+        state = self.__set_observation_dict()
 
-        self.state = self.__get_observations()
+        return state
 
-        assert self.state in self.observation_space
+    def __update_agent_head(self):
+        # TODO: define agent head types and let the user choose
+        # TODO: use AGENT_HEAD_INSIDE only of needed aka
+        # use it only if agent head is on agent edges
+        self.agent_head = b2Vec2(
+            (self.agent_body.position.x + math.cos(
+                self.agent_body.angle) * (self.agent_size.x - AGENT_HEAD_INSIDE)),
+            (self.agent_body.position.y + math.sin(
+                self.agent_body.angle) * (self.agent_size.x - AGENT_HEAD_INSIDE)))
+        # self.agent_head = self.agent_body.position
 
-        self.prev_state = self.state
+    def __get_observation_angle(self, delta_angle):
+        try:
+            return self.agent_body.angle - (OBSERVATION_RANGE / 2) + (OBSERVATION_RANGE / (OBSERVATION_NUM - 1) * delta_angle)
+        except ZeroDivisionError:
+            return self.agent_body.angle
 
-        step_reward = 0
+    # on contact functions
+    def __on_contact_border(self, contact, this_body, other_body):
+        if other_body.userData.type == BodyType.AGENT:
+            this_body.userData.agent_contact = True
 
-        # TODO: include in effects
-        for body in self.world.bodies:
-            if body.userData.agent_contact:
-                step_reward += body.userData.reward
+    def __on_contact_static_obstacle(self, contact, this_body, other_body):
+        if other_body.userData.type == BodyType.AGENT:
+            this_body.userData.agent_contact = True
 
-        self.render()
+    def __on_contact_moving_obstacle(self, contact, this_body, other_body):
+        if other_body.userData.type == BodyType.AGENT:
+            this_body.userData.agent_contact = True
+        elif other_body.userData.type == BodyType.MOVING_ZONE or other_body.userData.type == BodyType.STATIC_ZONE:
+            return
+        else:
+            this_body.linearVelocity = this_body.linearVelocity * -1
 
-        info = {}
+    def __on_contact_static_zone(self, contact, this_body, other_body):
+        if other_body.userData.type == BodyType.AGENT:
+            this_body.userData.agent_contact = True
+            other_body.linearDamping = 1
 
-        return self.state, step_reward, done, info
+    def __on_contact_moving_zone(self, contact, this_body, other_body):
+        if other_body.userData.type == BodyType.AGENT:
+            this_body.userData.agent_contact = True
+        if other_body.userData.type == BodyType.BORDER:
+            this_body.linearVelocity = this_body.linearVelocity * -1
 
-    def __user_input(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or \
-                    (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                # The user closed the window or pressed escape
-                self.__destroy()
-                return True
-        if MANUAL_MODE:
-            mouse_pos = b2Vec2(pygame.mouse.get_pos())
-            self.action = self.__world_coord(mouse_pos) - self.agent_body.position
-        return False
+    def __off_contact(self, contact, this_body, other_body):
+        if other_body.userData.type == BodyType.AGENT:
+            this_body.userData.agent_contact = False
 
-    def render(self):
-        # background for render screen
-        self.screen.fill(BACKGROUND_COLOR)
+        if this_body.userData.type == BodyType.MOVING_OBSTACLE and other_body.userData.type == BodyType.AGENT:
+            pass
 
-        # Draw the world
-        bodies_levels = [[i, b.userData.level]
-                         for i, b in enumerate(self.world.bodies)]
-        bodies_levels.sort(key=lambda x: x[1], reverse=True)
-
-        for bix, level in bodies_levels:
-            for fixture in self.world.bodies[bix].fixtures:
-                fixture.shape.draw(fixture, self.world.bodies[bix])
-
-        # for body in self.world.bodies:
-        #     for fixture in body.fixtures:
-        #         fixture.shape.draw(fixture, body)
-        self.__draw_action()
-        self.__draw_observations()
-        self.__draw_text()
-
-        pygame.display.flip()
-        self.clock.tick(TARGET_FPS)
-
-    def __destroy(self):
-        for body in self.world.bodies:
-            self.world.DestroyBody(body)
-        pygame.quit()
+        if this_body.userData.type == BodyType.STATIC_ZONE and other_body.userData.type == BodyType.AGENT:
+            other_body.angularDamping = AGENT_LINEAR_DAMPING
+            other_body.angularDamping = AGENT_ANGULAR_DAMPING
 
     def __create_borders(self):
         inside = 0  # defines how much of the borders are visible
@@ -462,104 +552,6 @@ class BoxEnv(gym.Env):
         self.agent_fix.body.angularDamping = AGENT_ANGULAR_DAMPING
         self.agent_fix.body.linearDamping = AGENT_LINEAR_DAMPING
 
-    def __update_agent_head(self):
-        # TODO: define agent head types and let the user choose
-        self.agent_head = b2Vec2(
-            (self.agent_body.position.x + math.cos(
-                self.agent_body.angle) * (self.agent_size.x - AGENT_HEAD_INSIDE)),
-            (self.agent_body.position.y + math.sin(
-                self.agent_body.angle) * (self.agent_size.x - AGENT_HEAD_INSIDE)))
-        # self.agent_head = self.agent_body.position
-
-    def __get_agent_velocity_mag(self):
-        return self.agent_body.linearVelocity.length
-
-    def __get_observation_angle(self, delta_angle):
-        try:
-            return self.agent_body.angle - (OBSERVATION_RANGE / 2) + (OBSERVATION_RANGE / (OBSERVATION_NUM - 1) * delta_angle)
-        except ZeroDivisionError:
-            return self.agent_body.angle
-
-    def __get_observations(self):
-        self.data.clear()
-
-        for delta_angle in range(OBSERVATION_NUM):
-            # absolute angle for the observation vector
-            # based on OBSERVATION_RANGE
-            angle = self.__get_observation_angle(delta_angle)
-
-            # TODO: bugfix with smaller OBSERVATION_MAX_DISTANCE
-            observation_end = (self.agent_head.x + math.cos(angle) * OBSERVATION_MAX_DISTANCE,
-                               self.agent_head.y + math.sin(angle) * OBSERVATION_MAX_DISTANCE)
-
-            callback = RayCastClosestCallback()
-
-            self.world.RayCast(callback, self.agent_head, observation_end)
-
-            if hasattr(callback, "point"):
-                intersection = callback.point
-                distance = self.__euclidean_distance(
-                    self.agent_head, intersection)
-
-                observation = Observation()
-                observation.index = delta_angle
-                observation.angle = angle
-                observation.body = callback.fixture.body
-                observation.distance = distance
-                observation.intersection = intersection
-
-                self.data.append(observation)
-
-        # filter info and return observation space
-        state = self.__set_observation_dict()
-
-        return state
-
-    # on contact functions
-    def __on_contact_border(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-
-    def __on_contact_static_obstacle(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-
-    def __on_contact_moving_obstacle(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-        elif other_body.userData.type == BodyType.MOVING_ZONE or other_body.userData.type == BodyType.STATIC_ZONE:
-            return
-        else:
-            this_body.linearVelocity = this_body.linearVelocity * -1
-
-    def __on_contact_static_zone(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-            other_body.linearDamping = 1
-            # other_body.angularDamping = 0
-
-    def __on_contact_moving_zone(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-        if other_body.userData.type == BodyType.BORDER:
-            this_body.linearVelocity = this_body.linearVelocity * -1
-
-    def __off_contact(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = False
-
-        if this_body.userData.type == BodyType.MOVING_OBSTACLE and other_body.userData.type == BodyType.AGENT:
-            pass
-
-        if this_body.userData.type == BodyType.STATIC_ZONE and other_body.userData.type == BodyType.AGENT:
-            other_body.angularDamping = AGENT_LINEAR_DAMPING
-            other_body.angularDamping = AGENT_ANGULAR_DAMPING
-
-    # user functions
-
-    def get_world_size(self):
-        return WORLD_WIDTH, WORLD_HEIGHT
-
     def create_static_obstacle(self, pos, size, angle=0, reward=-1, level=3):
         body = self.world.CreateStaticBody(
             position=pos, angle=angle
@@ -611,6 +603,10 @@ class BoxEnv(gym.Env):
             on_contact=self.__on_contact_moving_zone,
             off_contact=self.__off_contact, reward=reward, level=level)
 
+    # user functions
+    def get_world_size(self):
+        return WORLD_WIDTH, WORLD_HEIGHT
+
     # render functions
     def __draw_polygon(self, polygon, body):
         vertices = [(body.transform * v) *
@@ -633,7 +629,8 @@ class BoxEnv(gym.Env):
         for observation in self.data:
             distance = round(observation.distance, 1)
 
-            text_point = self.__pygame_coord(self.agent_head + (observation.intersection - self.agent_head) / 2)
+            text_point = self.__pygame_coord(
+                self.agent_head + (observation.intersection - self.agent_head) / 2)
             text_surface = text_font.render(
                 str(distance), False, COLOR_BLACK, COLOR_WHITE)
             self.screen.blit(text_surface, text_point)
@@ -646,7 +643,7 @@ class BoxEnv(gym.Env):
         self.screen.blit(text_surface, fps_point)
 
         # agent info
-        velocity = self.__get_agent_velocity_mag()
+        velocity = self.agent_body.linearVelocity.length
         agent_info = "Velocity: {}".format(round(velocity, 1))
         text_surface = text_font.render(
             agent_info, True, COLOR_BLACK, COLOR_WHITE
