@@ -3,6 +3,7 @@ import random
 
 from enum import Enum
 from dataclasses import dataclass
+import warnings
 import numpy as np
 import gym
 import pygame
@@ -38,7 +39,7 @@ SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
 PPM = 10  # pixel per meter
 
 # screen layout
-INFO_HEIGHT = SCREEN_HEIGHT * 0.2 # pixels
+INFO_HEIGHT = SCREEN_HEIGHT * 0.3  # pixels
 
 # world
 WORLD_WIDTH = SCREEN_WIDTH / PPM  # meters
@@ -284,8 +285,19 @@ class BoxEnv(gym.Env):
                 step_reward += body.userData.reward
 
         self.screen_infos.clear()
-        self.screen_infos.append({"name": "velocity", "value": round(self.agent_body.linearVelocity.length, 1)})
-        self.screen_infos.append({"name": "angular velocity", "value": round(self.agent_body.angularVelocity, 1)})
+
+        self.screen_infos.append({"name": "position", "value": (
+            round(self.agent_body.position.x, 1), round(self.agent_body.position.y, 1))})
+        self.screen_infos.append({"name": "velocity", "value": round(
+            self.agent_body.linearVelocity.length, 1)})
+        self.screen_infos.append(
+            {"name": "angular velocity", "value": round(self.agent_body.angularVelocity, 1)})
+
+        for body in self.world.bodies:
+            self.screen_infos.append({"name": "{} position".format(body.userData.type.value), "value": (
+                round(body.position.x, 1), round(body.position.y, 1))})
+            self.screen_infos.append({"name": "{} position".format(body.userData.type.value), "value": (
+                round(body.position.x, 1), round(body.position.y, 1))})
 
         self.render()
 
@@ -362,7 +374,7 @@ class BoxEnv(gym.Env):
                     low=-np.inf, high=np.inf, shape=(2,))})
             elif key == "velocity_mag":
                 partial_dict = ({"velocity_mag": gym.spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(1,))})
+                    low=0, high=np.inf, shape=(1,))})
             elif key == "inside_zone":
                 # partial_dict = ({"inside_zone": gym.spaces.Tuple(
                 #     ([gym.spaces.Discrete(2)] * ZONES_NUM))})
@@ -393,10 +405,12 @@ class BoxEnv(gym.Env):
                 state["body_velocities"] = list()
                 for observation in self.data:
                     if observation.valid:
-                        state["body_velocities"].append(observation.body.linearVelocity)
+                        state["body_velocities"].append(
+                            observation.body.linearVelocity)
                     else:
                         state["body_velocities"].append(b2Vec2(0, 0))
-                state["body_velocities"] = np.array(state["body_velocities"], dtype=np.float32)
+                state["body_velocities"] = np.array(
+                    state["body_velocities"], dtype=np.float32)
             elif key == "position":
                 state["position"] = np.array(
                     self.agent_body.position, dtype=np.float32)
@@ -404,7 +418,7 @@ class BoxEnv(gym.Env):
                 state["linear_velocity"] = np.array(
                     self.agent_body.linearVelocity, dtype=np.float32)
             elif key == "velocity_mag":
-                state["velocity_mag"] = [self.agent_body.linearVelocity.length]
+                state["velocity_mag"] = np.array([self.agent_body.linearVelocity.length], dtype=np.float32)
             elif key == "inside_zone":
                 state["inside_zone"] = False
 
@@ -507,12 +521,13 @@ class BoxEnv(gym.Env):
             other_body.angularDamping = AGENT_ANGULAR_DAMPING
 
     def __create_borders(self):
-        inside = 2  # defines how much of the borders are visible
+        inside = 0.5  # defines how much of the borders are visible
 
         # TODO: add fixtures (?)
 
         self.bottom_border = self.world.CreateStaticBody(
-            position=(WORLD_WIDTH / 2, inside - (BOUNDARIES_WIDTH / 2) + INFO_HEIGHT / PPM),
+            position=(WORLD_WIDTH / 2, inside -
+                      (BOUNDARIES_WIDTH / 2) + INFO_HEIGHT / PPM),
             shapes=b2PolygonShape(
                 box=(WORLD_WIDTH / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
             userData=BodyData(type=BodyType.BORDER,
@@ -531,7 +546,8 @@ class BoxEnv(gym.Env):
         )
 
         self.left_border = self.world.CreateStaticBody(
-            position=(inside - (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2 + (INFO_HEIGHT / PPM)),
+            position=(inside - (BOUNDARIES_WIDTH / 2),
+                      WORLD_HEIGHT / 2 + (INFO_HEIGHT / PPM)),
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2 + BOUNDARIES_WIDTH)),
             userData=BodyData(type=BodyType.BORDER,
@@ -555,8 +571,12 @@ class BoxEnv(gym.Env):
         # setting random initial position
         if agent_pos is None:
             r = self.agent_size.length
-            x = random.randint(int(r), int(WORLD_WIDTH - r))
-            y = random.randint(int(r), int(WORLD_HEIGHT - (INFO_HEIGHT / PPM) - r))
+            try:
+                x = random.randint(int(r), int(WORLD_WIDTH - r))
+                y = random.randint(int(r + (INFO_HEIGHT / PPM)),
+                                   int(WORLD_HEIGHT + (INFO_HEIGHT / PPM) - r))
+            except ValueError:
+                assert False and "There is no space to spawn the agent, modify world sizes"
             agent_pos = b2Vec2(x, y)
 
         # setting random initial angle
@@ -673,25 +693,12 @@ class BoxEnv(gym.Env):
                     self.screen, INTERSECTION_COLOR, end_point, 3)
 
     def __draw_infos(self):
-        info_vertices = [(0,SCREEN_HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT - INFO_HEIGHT), (0, SCREEN_HEIGHT - INFO_HEIGHT)]
+        info_vertices = [(0, SCREEN_HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT), (
+            SCREEN_WIDTH, SCREEN_HEIGHT - INFO_HEIGHT), (0, SCREEN_HEIGHT - INFO_HEIGHT)]
         pygame.draw.polygon(self.screen, INFO_BACK_COLOR, info_vertices)
 
-        text_font = pygame.font.SysFont('Comic Sans MS', 20)
-
-        max_entry_width = 200
-        max_entry_height = 64
-        rows = 4
-        columns = 2
-        entry_width = min(SCREEN_WIDTH / columns, max_entry_width)
-        entry_height = min(INFO_HEIGHT / rows, max_entry_height)
-        row_space = (INFO_HEIGHT - entry_height*rows) / (rows - (1 if rows > 1 else 0)) # space in pixels between lines
-        column_space = (SCREEN_WIDTH - entry_width*columns) / (columns - (1 if columns > 1 else 0))
-
-        print(entry_width, entry_height)
-        print(row_space, column_space)
-
-        border = 10 # info border pixels
-        info_coord = b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border)
+        font_size = 18
+        text_font = pygame.font.SysFont('Comic Sans MS', font_size)
 
         # fps
         fps = round(self.clock.get_fps())
@@ -701,15 +708,32 @@ class BoxEnv(gym.Env):
             str(fps), True, COLOR_BLACK, fps_color)
         self.screen.blit(text_surface, fps_point)
 
-        # agent info
+        # infos
+        border = 10  # info border pixels
+        info_coord = b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border) # first info coordinate
+        y_space = INFO_HEIGHT - border*2 # available vertical space
+        y_inc = 20 # vertical space between infos
+        x_inc = 0
+        y_slots = y_space / y_inc
+
+        max_info_str_len = 0
         for iix, info in enumerate(self.screen_infos):
-            info_str = "{}: {}".format(info["name"], info["value"])
+            info_str = "{}, {}: {}".format(iix, info["name"], info["value"])
             text_surface = text_font.render(
                 info_str, True, COLOR_BLACK, COLOR_WHITE
             )
-            pos_inc = b2Vec2(0, iix*20)
+
+            pos_inc = b2Vec2(x_inc, (iix % y_slots)*y_inc)
             pos = info_coord + pos_inc
             self.screen.blit(text_surface, pos)
+
+            if len(info_str) > max_info_str_len:
+                max_info_str_len = len(info_str)
+            if (iix + 1) % y_slots == 0:
+                x_inc += max_info_str_len * 7
+                max_info_str_len = 0
+            if x_inc + max_info_str_len > SCREEN_WIDTH:
+                warnings.warn("Some infos are not visible, increase INFO_HEIGHT")
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
