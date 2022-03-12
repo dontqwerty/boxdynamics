@@ -2,7 +2,8 @@ import math
 import random
 
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
 import warnings
 import numpy as np
 import gym
@@ -39,7 +40,7 @@ SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
 PPM = 10  # pixel per meter
 
 # screen layout
-INFO_HEIGHT = SCREEN_HEIGHT * 0.3  # pixels
+INFO_HEIGHT = SCREEN_HEIGHT * 0.1  # pixels
 
 # world
 WORLD_WIDTH = SCREEN_WIDTH / PPM  # meters
@@ -65,7 +66,7 @@ MAX_FORCE = 10
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
 OBSERVATION_MAX_DISTANCE = 200  # how far can the agent see
-OBSERVATION_NUM = 10  # number of distance vectors
+OBSERVATION_NUM = 100  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2
@@ -103,6 +104,7 @@ class BodyData:
     # defines what happens when the body finish hitting another body
     off_contact: None = None
     agent_contact: bool = False  # if the body is currently in contact with the agent
+    touching: List = field(default_factory=list)
     reward: float = 0  # reward when agents hits the object
     # level of deepness when drawing screen (0 is above everything else)
     # if multiple object share same level, first created objects are below others
@@ -122,8 +124,14 @@ class Observation:
 class ContactListener(b2ContactListener):
     def __init__(self):
         b2ContactListener.__init__(self)
+        self.contact_counter = 0
+        self.contacts = list()
 
     def BeginContact(self, contact):
+        contact.fixtureA.body.userData.touching.append({"body": contact.fixtureB.body})
+        contact.fixtureB.body.userData.touching.append({"body": contact.fixtureA.body})
+        self.contacts.append({"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
+
         try:
             contact.fixtureA.body.userData.on_contact(
                 contact, contact.fixtureA.body, contact.fixtureB.body)
@@ -138,6 +146,13 @@ class ContactListener(b2ContactListener):
         pass
 
     def EndContact(self, contact):
+        for c in self.contacts:
+            if c["bodyA"] == contact.fixtureA.body and c["bodyB"] == contact.fixtureB.body:
+                contact.fixtureA.body.userData.touching.remove({"body": contact.fixtureB.body})
+                contact.fixtureB.body.userData.touching.remove({"body": contact.fixtureA.body})
+                self.contacts.remove({"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
+                break
+
         try:
             contact.fixtureA.body.userData.off_contact(
                 contact, contact.fixtureA.body, contact.fixtureB.body)
@@ -284,20 +299,7 @@ class BoxEnv(gym.Env):
             if body.userData.agent_contact:
                 step_reward += body.userData.reward
 
-        self.screen_infos.clear()
-
-        self.screen_infos.append({"name": "position", "value": (
-            round(self.agent_body.position.x, 1), round(self.agent_body.position.y, 1))})
-        self.screen_infos.append({"name": "velocity", "value": round(
-            self.agent_body.linearVelocity.length, 1)})
-        self.screen_infos.append(
-            {"name": "angular velocity", "value": round(self.agent_body.angularVelocity, 1)})
-
-        for body in self.world.bodies:
-            self.screen_infos.append({"name": "{} position".format(body.userData.type.value), "value": (
-                round(body.position.x, 1), round(body.position.y, 1))})
-            self.screen_infos.append({"name": "{} position".format(body.userData.type.value), "value": (
-                round(body.position.x, 1), round(body.position.y, 1))})
+        self.__get_screen_infos()
 
         self.render()
 
@@ -464,6 +466,19 @@ class BoxEnv(gym.Env):
 
         return state
 
+    def __get_screen_infos(self):
+        self.screen_infos.clear()
+
+        self.screen_infos.append({"name": "agent position", "value": (
+            round(self.agent_body.position.x, 1), round(self.agent_body.position.y, 1))})
+        self.screen_infos.append({"name": "agent velocity magnitude", "value": round(
+            self.agent_body.linearVelocity.length, 1)})
+        self.screen_infos.append(
+            {"name": "agent angular velocity", "value": round(self.agent_body.angularVelocity, 1)})
+
+        for cix, agent_contact in enumerate(self.agent_body.userData.touching):
+            self.screen_infos.append({"name": "contact {}".format(cix), "value": agent_contact["body"].userData.type})
+
     def __update_agent_head(self):
         # TODO: define agent head types and let the user choose
         # TODO: use AGENT_HEAD_INSIDE only of needed aka
@@ -496,7 +511,8 @@ class BoxEnv(gym.Env):
         elif other_body.userData.type == BodyType.MOVING_ZONE or other_body.userData.type == BodyType.STATIC_ZONE:
             return
         else:
-            this_body.linearVelocity = this_body.linearVelocity * -1
+            # this_body.linearVelocity = this_body.linearVelocity * -1
+            pass
 
     def __on_contact_static_zone(self, contact, this_body, other_body):
         if other_body.userData.type == BodyType.AGENT:
@@ -507,7 +523,8 @@ class BoxEnv(gym.Env):
         if other_body.userData.type == BodyType.AGENT:
             this_body.userData.agent_contact = True
         if other_body.userData.type == BodyType.BORDER:
-            this_body.linearVelocity = this_body.linearVelocity * -1
+            # this_body.linearVelocity = this_body.linearVelocity * -1
+            pass
 
     def __off_contact(self, contact, this_body, other_body):
         if other_body.userData.type == BodyType.AGENT:
@@ -718,7 +735,7 @@ class BoxEnv(gym.Env):
 
         max_info_str_len = 0
         for iix, info in enumerate(self.screen_infos):
-            info_str = "{}, {}: {}".format(iix, info["name"], info["value"])
+            info_str = "> {}: {}".format(info["name"], info["value"])
             text_surface = text_font.render(
                 info_str, True, COLOR_BLACK, COLOR_WHITE
             )

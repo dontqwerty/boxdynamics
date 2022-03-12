@@ -7,11 +7,11 @@ env.reset()
 
 width, height = env.get_world_size()
 
-env.create_moving_obstacle((30,10), (3,2), (5,20), angle=2)
+env.create_moving_obstacle((30,10), (3,2), (50,20), angle=2)
 env.create_moving_obstacle((10,30), (3,2), (6,3), angle=2.3)
 env.create_moving_obstacle((10,40), (5,4), (1,10), angle=2.3)
 env.create_moving_obstacle((10,50), (3,6), (5,7), angle=2.3)
-env.create_moving_obstacle((30,60), (1,1), (4,-10), angle=2.3)
+env.create_moving_obstacle((30,60), (1,1), (40,-10), angle=2.3)
 env.create_moving_obstacle((60,20), (5,5), (0,3), angle=2.3)
 
 env.create_moving_zone((10,20), (3,2), (10,10))
@@ -21,7 +21,7 @@ env.create_moving_zone((60,10), (1,7), (10,0))
 env.create_static_obstacle((30,40), (10,3))
 
 env.create_static_zone((60,60), (10,10))
-env.create_static_zone((30,30), (5,50))
+# env.create_static_zone((30,30), (5,50))
 
 action = env.action_space.sample()
 action[0] = 0
