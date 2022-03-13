@@ -100,11 +100,8 @@ class BodyData:
     type: Enum = BodyType.DEFAULT
     color: tuple = COLOR_BLACK
     shape: Enum = BodyShape.BOX
-    on_contact: None = None  # defines what happens when the body hits another body
-    # defines what happens when the body finish hitting another body
-    off_contact: None = None
-    agent_contact: bool = False  # if the body is currently in contact with the agent
-    touching: List = field(default_factory=list)
+    # list of bodies in contact with this body
+    contact_bodies: List = field(default_factory=list)
     reward: float = 0  # reward when agents hits the object
     # level of deepness when drawing screen (0 is above everything else)
     # if multiple object share same level, first created objects are below others
@@ -124,45 +121,28 @@ class Observation:
 class ContactListener(b2ContactListener):
     def __init__(self):
         b2ContactListener.__init__(self)
-        self.contact_counter = 0
-        self.contacts = list()
+        self.contact_bodies = list()
 
     def BeginContact(self, contact):
-        contact.fixtureA.body.userData.touching.append({"body": contact.fixtureB.body})
-        contact.fixtureB.body.userData.touching.append({"body": contact.fixtureA.body})
-        self.contacts.append({"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
-
-        try:
-            contact.fixtureA.body.userData.on_contact(
-                contact, contact.fixtureA.body, contact.fixtureB.body)
-        except TypeError:
-            pass
-        try:
-            contact.fixtureB.body.userData.on_contact(
-                contact, contact.fixtureB.body, contact.fixtureA.body)
-        except TypeError:
-            pass
+        contact.fixtureA.body.userData.contact_bodies.append(
+            contact.fixtureB.body)
+        contact.fixtureB.body.userData.contact_bodies.append(
+            contact.fixtureA.body)
+        self.contact_bodies.append(
+            {"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
 
         pass
 
     def EndContact(self, contact):
-        for c in self.contacts:
+        for c in self.contact_bodies:
             if c["bodyA"] == contact.fixtureA.body and c["bodyB"] == contact.fixtureB.body:
-                contact.fixtureA.body.userData.touching.remove({"body": contact.fixtureB.body})
-                contact.fixtureB.body.userData.touching.remove({"body": contact.fixtureA.body})
-                self.contacts.remove({"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
+                contact.fixtureA.body.userData.contact_bodies.remove(
+                    contact.fixtureB.body)
+                contact.fixtureB.body.userData.contact_bodies.remove(
+                    contact.fixtureA.body)
+                self.contact_bodies.remove(
+                    {"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
                 break
-
-        try:
-            contact.fixtureA.body.userData.off_contact(
-                contact, contact.fixtureA.body, contact.fixtureB.body)
-        except TypeError:
-            pass
-        try:
-            contact.fixtureB.body.userData.off_contact(
-                contact, contact.fixtureB.body, contact.fixtureA.body)
-        except TypeError:
-            pass
 
         pass
 
@@ -275,6 +255,7 @@ class BoxEnv(gym.Env):
                                  action[1] *
                                  math.sin(action[0] + self.agent_body.angle))
 
+        # can override action
         done = self.__user_input()
 
         self.agent_body.ApplyForce(
@@ -290,14 +271,12 @@ class BoxEnv(gym.Env):
 
         assert self.state in self.observation_space
 
+        # TODO: rewards and effects
+        self.__contact_effects()
+
         self.prev_state = self.state
 
         step_reward = 0
-
-        # TODO: include in effects
-        for body in self.world.bodies:
-            if body.userData.agent_contact:
-                step_reward += body.userData.reward
 
         self.__get_screen_infos()
 
@@ -306,6 +285,9 @@ class BoxEnv(gym.Env):
         info = {}
 
         return self.state, step_reward, done, info
+
+    def __contact_effects(self):
+        pass
 
     def render(self):
         # background for render screen
@@ -420,7 +402,8 @@ class BoxEnv(gym.Env):
                 state["linear_velocity"] = np.array(
                     self.agent_body.linearVelocity, dtype=np.float32)
             elif key == "velocity_mag":
-                state["velocity_mag"] = np.array([self.agent_body.linearVelocity.length], dtype=np.float32)
+                state["velocity_mag"] = np.array(
+                    [self.agent_body.linearVelocity.length], dtype=np.float32)
             elif key == "inside_zone":
                 state["inside_zone"] = False
 
@@ -476,8 +459,9 @@ class BoxEnv(gym.Env):
         self.screen_infos.append(
             {"name": "agent angular velocity", "value": round(self.agent_body.angularVelocity, 1)})
 
-        for cix, agent_contact in enumerate(self.agent_body.userData.touching):
-            self.screen_infos.append({"name": "contact {}".format(cix), "value": agent_contact["body"].userData.type})
+        for cix, agent_contact in enumerate(self.agent_body.userData.contact_bodies):
+            self.screen_infos.append({"name": "contact {}".format(
+                cix), "value": agent_contact.userData.type})
 
     def __update_agent_head(self):
         # TODO: define agent head types and let the user choose
@@ -496,47 +480,6 @@ class BoxEnv(gym.Env):
         except ZeroDivisionError:
             return self.agent_body.angle
 
-    # on contact functions
-    def __on_contact_border(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-
-    def __on_contact_static_obstacle(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-
-    def __on_contact_moving_obstacle(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-        elif other_body.userData.type == BodyType.MOVING_ZONE or other_body.userData.type == BodyType.STATIC_ZONE:
-            return
-        else:
-            # this_body.linearVelocity = this_body.linearVelocity * -1
-            pass
-
-    def __on_contact_static_zone(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-            other_body.linearDamping = 1
-
-    def __on_contact_moving_zone(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = True
-        if other_body.userData.type == BodyType.BORDER:
-            # this_body.linearVelocity = this_body.linearVelocity * -1
-            pass
-
-    def __off_contact(self, contact, this_body, other_body):
-        if other_body.userData.type == BodyType.AGENT:
-            this_body.userData.agent_contact = False
-
-        if this_body.userData.type == BodyType.MOVING_OBSTACLE and other_body.userData.type == BodyType.AGENT:
-            pass
-
-        if this_body.userData.type == BodyType.STATIC_ZONE and other_body.userData.type == BodyType.AGENT:
-            other_body.angularDamping = AGENT_LINEAR_DAMPING
-            other_body.angularDamping = AGENT_ANGULAR_DAMPING
-
     def __create_borders(self):
         inside = 0.5  # defines how much of the borders are visible
 
@@ -548,8 +491,7 @@ class BoxEnv(gym.Env):
             shapes=b2PolygonShape(
                 box=(WORLD_WIDTH / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
             userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, on_contact=self.__on_contact_border,
-                              off_contact=self.__off_contact, level=1)
+                              color=BORDER_COLOR, level=1)
         )
 
         self.top_border = self.world.CreateStaticBody(
@@ -558,8 +500,7 @@ class BoxEnv(gym.Env):
             shapes=b2PolygonShape(
                 box=(WORLD_WIDTH / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
             userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, on_contact=self.__on_contact_border,
-                              off_contact=self.__off_contact, level=1)
+                              color=BORDER_COLOR, level=1)
         )
 
         self.left_border = self.world.CreateStaticBody(
@@ -568,8 +509,7 @@ class BoxEnv(gym.Env):
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2 + BOUNDARIES_WIDTH)),
             userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, on_contact=self.__on_contact_border,
-                              off_contact=self.__off_contact, level=1)
+                              color=BORDER_COLOR, level=1)
         )
         self.right_border = self.world.CreateStaticBody(
             position=(WORLD_WIDTH - inside +
@@ -577,8 +517,7 @@ class BoxEnv(gym.Env):
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2 + BOUNDARIES_WIDTH)),
             userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, on_contact=self.__on_contact_border,
-                              off_contact=self.__off_contact, level=1)
+                              color=BORDER_COLOR, level=1)
         )
 
     def __create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
@@ -608,7 +547,7 @@ class BoxEnv(gym.Env):
             box=(agent_width, agent_height), density=AGENT_MASS/area)
 
         self.agent_body.userData = BodyData(
-            type=BodyType.AGENT, color=AGENT_COLOR, on_contact=None, level=0)
+            type=BodyType.AGENT, color=AGENT_COLOR, level=0)
 
         self.agent_fix.body.angularDamping = AGENT_ANGULAR_DAMPING
         self.agent_fix.body.linearDamping = AGENT_LINEAR_DAMPING
@@ -622,8 +561,6 @@ class BoxEnv(gym.Env):
 
         body.userData = BodyData(
             type=BodyType.STATIC_OBSTACLE, color=STATIC_OBSTACLE_COLOR,
-            on_contact=self.__on_contact_static_obstacle,
-            off_contact=self.__off_contact,
             reward=reward, level=level)
 
     def create_moving_obstacle(self, pos, size, velocity, angle=0, reward=-2, level=2):
@@ -635,8 +572,7 @@ class BoxEnv(gym.Env):
 
         body.userData = BodyData(
             type=BodyType.MOVING_OBSTACLE, color=MOVING_OBSTACLE_COLOR,
-            on_contact=self.__on_contact_moving_obstacle,
-            off_contact=self.__off_contact, reward=reward, level=level)
+            reward=reward, level=level)
 
     def create_static_zone(self, pos, size, angle=0, reward=1, level=3):
         body = self.world.CreateStaticBody(
@@ -647,8 +583,7 @@ class BoxEnv(gym.Env):
 
         body.userData = BodyData(
             type=BodyType.STATIC_ZONE, color=STATIC_ZONE_COLOR,
-            on_contact=self.__on_contact_static_zone,
-            off_contact=self.__off_contact, reward=reward, level=level)
+            reward=reward, level=level)
 
     def create_moving_zone(self, pos, size, velocity, angle=0, reward=2, level=1):
         body = self.world.CreateDynamicBody(
@@ -661,8 +596,7 @@ class BoxEnv(gym.Env):
 
         body.userData = BodyData(
             type=BodyType.MOVING_ZONE, color=MOVING_ZONE_COLOR,
-            on_contact=self.__on_contact_moving_zone,
-            off_contact=self.__off_contact, reward=reward, level=level)
+            reward=reward, level=level)
 
     # user functions
     def get_world_size(self):
@@ -686,8 +620,9 @@ class BoxEnv(gym.Env):
 
         # drawing distance text
         # TODO: only draw them if there is enough space
-        for observation in self.data:
-            if observation.valid:
+        freq = 1  # defines "distance text" quantity
+        for oix, observation in enumerate(self.data):
+            if oix % freq == 0 and observation.valid:
                 distance = round(observation.distance, 1)
 
                 text_point = self.__pygame_coord(
@@ -727,9 +662,10 @@ class BoxEnv(gym.Env):
 
         # infos
         border = 10  # info border pixels
-        info_coord = b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border) # first info coordinate
-        y_space = INFO_HEIGHT - border*2 # available vertical space
-        y_inc = 20 # vertical space between infos
+        # first info coordinate
+        info_coord = b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border)
+        y_space = INFO_HEIGHT - border*2  # available vertical space
+        y_inc = 20  # vertical space between infos
         x_inc = 0
         y_slots = y_space / y_inc
 
@@ -750,7 +686,8 @@ class BoxEnv(gym.Env):
                 x_inc += max_info_str_len * 7
                 max_info_str_len = 0
             if x_inc + max_info_str_len > SCREEN_WIDTH:
-                warnings.warn("Some infos are not visible, increase INFO_HEIGHT")
+                warnings.warn(
+                    "Some infos are not visible, increase INFO_HEIGHT")
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
