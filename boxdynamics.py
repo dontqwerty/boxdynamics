@@ -43,6 +43,9 @@ PPM = 10  # pixel per meter
 
 # screen layout
 INFO_HEIGHT = SCREEN_HEIGHT * 0.2  # pixels
+INFO_FONT_SIZE = 18
+
+DESIGN_SLEEP = 0.01 # delay in seconds while designing world
 
 # world
 WORLD_WIDTH = SCREEN_WIDTH / PPM  # meters
@@ -100,7 +103,7 @@ class BodyShape(Enum):
 @dataclass
 class BodyData:
     type: Enum = BodyType.DEFAULT
-    color: tuple = COLOR_BLACK
+    color: tuple = COLOR_WHITE
     shape: Enum = BodyShape.BOX
     # list of bodies in contact with this body
     contact_bodies: List = field(default_factory=list)
@@ -231,6 +234,7 @@ class BoxEnv(gym.Env):
         self.prev_state = None
 
         self.screen_infos = list()
+        self.design_shapes = list()
 
     def reset(self):
         # resetting base class
@@ -295,22 +299,19 @@ class BoxEnv(gym.Env):
         # background for render screen
         self.screen.fill(BACK_COLOR)
 
-        # Draw the world based on bodies levels
-        bodies_levels = [[i, b.userData.level]
-                         for i, b in enumerate(self.world.bodies)]
-        bodies_levels.sort(key=lambda x: x[1], reverse=True)
-
-        # for bix, level in bodies_levels:
-        #     for fixture in self.world.bodies[bix].fixtures:
-        #         fixture.shape.draw(fixture, self.world.bodies[bix])
-
+        # drawing bodies based on their level
         self.__draw_bodies(BodyType)
 
+        # drawing agent actions
         self.__draw_action()
+
+        # drawing agent observations
         self.__draw_observations()
+
+        # drawing text distances
         self.__draw_distances()
-        # last for a reason
-        self.__draw_infos()
+
+        # last for a reason, drawing infos
         self.__draw_simulation_infos()
 
         pygame.display.flip()
@@ -321,22 +322,55 @@ class BoxEnv(gym.Env):
             self.world.DestroyBody(body)
         pygame.quit()
 
-    def world_design(self):
-        bodies = list()
-        vertices = [b2Vec2(0, 0) for _ in range(4)]
+    def box_design(self):
+        first_set = False
+        second_set = False
 
-        drawing_rect = False
-        rectangle_mode = False
+        box = [b2Vec2(0, 0) for _ in range(4)]
+        self.design_shapes.append(box)
+
+        while not (first_set and second_set):
+            # drawing borders and info box
+            self.__render_design()
+
+
+            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+
+            for event in pygame.event.get():
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if first_set:
+                        second_set = True
+                        end_pos = mouse_pos
+                    else:
+                        first_set = True
+                        start_pos = mouse_pos
+
+            self.design_shapes.remove(box)
+
+            if first_set:
+                box[0] = start_pos
+                box[1] = b2Vec2(mouse_pos.x, start_pos.y)
+                box[2] = mouse_pos
+                box[3] = b2Vec2(start_pos.x, mouse_pos.y)
+            if first_set and second_set:
+                box[0] = start_pos
+                box[1] = b2Vec2(end_pos.x, start_pos.y)
+                box[2] = end_pos
+                box[3] = b2Vec2(start_pos.x, end_pos.y)
+                print("rect ok")
+
+            self.design_shapes.append(box)
+
+            sleep(DESIGN_SLEEP)
+
+    def world_design(self):
+        circle_mode = False
 
         finished = False
 
         while not finished:
-            self.screen.fill(BACK_COLOR)
-            self.__draw_bodies([BodyType.BORDER])
-            self.__draw_infos()
-            self.__draw_create_infos()
-
-            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            # drawing borders and info box
+            self.__render_design()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT or \
@@ -344,49 +378,27 @@ class BoxEnv(gym.Env):
                     # The user closed the window or pressed escape
                     self.__destroy()
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                    rectangle_mode = True
+                    self.box_design()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                    circle_mode = True
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
                     finished = True
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if drawing_rect:
-                        rectangle_mode = False
-                        drawing_rect = False
-                    if rectangle_mode:
-                        vertices = [b2Vec2(0, 0) for _ in range(4)]
-                        start_pos = mouse_pos
-                        drawing_rect = True
 
-            if drawing_rect:
-                try:
-                    bodies.remove(vertices)
-                except ValueError:
-                    pass
-                vertices[0] = start_pos
-                vertices[1] = b2Vec2(mouse_pos.x, start_pos.y)
-                vertices[2] = mouse_pos
-                vertices[3] = b2Vec2(start_pos.x, mouse_pos.y)
-                bodies.append(vertices)
-
-            for body in bodies:
-                pygame.draw.polygon(self.screen, COLOR_GREEN, body)
-            pygame.display.flip()
-
-            sleep(0.01)
+            sleep(DESIGN_SLEEP)
         
-        for body in bodies:
-            pos = b2Vec2(body[0].x + (body[1].x - body[0].x) / 2, body[0].y + (body[3].y - body[0].y) / 2)
-            size = b2Vec2(abs(body[1].x - body[0].x) / 2, abs(body[3].y - body[0].y) / 2)
+        self.__create_from_design_shapes()
+        pass
+
+    def __create_from_design_shapes(self):
+        for shape in self.design_shapes:
+            pos = b2Vec2(shape[0].x + (shape[1].x - shape[0].x) / 2, shape[0].y + (shape[3].y - shape[0].y) / 2)
+            size = b2Vec2(abs(shape[1].x - shape[0].x) / 2, abs(shape[3].y - shape[0].y) / 2)
 
             pos = self.__world_coord(pos)
             size = size / PPM
             self.create_static_obstacle(pos, size)
-            print(pos, size)
-        
-        pass
 
     def __user_input(self):
-        # TODO: create build mode in which the user can create bodies with
-        # graphical interface help
         for event in pygame.event.get():
             if event.type == pygame.QUIT or \
                     (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
@@ -671,8 +683,24 @@ class BoxEnv(gym.Env):
         return WORLD_WIDTH, WORLD_HEIGHT
 
     # render functions
+    def __render_design(self):
+        self.screen.fill(BACK_COLOR)
+        self.__draw_bodies([BodyType.BORDER])
+        self.__draw_design_infos()
+        self.__draw_design_shapes()
+        pygame.display.flip()
+
+    def __draw_design_shapes(self):
+        for shape in self.design_shapes:
+            pygame.draw.polygon(self.screen, COLOR_GREEN, shape)
+
     def __draw_bodies(self, types):
-        for body in self.world.bodies:
+        # Draw the world based on bodies levels
+        bodies_levels = [[b, b.userData.level]
+                         for b in self.world.bodies]
+        bodies_levels.sort(key=lambda x: x[1], reverse=True)
+
+        for body, level in bodies_levels:
             if body.userData.type in types:
                 for fixture in body.fixtures:
                     vertices = [self.__pygame_coord(body.transform * v) for v in fixture.shape.vertices]
@@ -714,25 +742,30 @@ class BoxEnv(gym.Env):
                 pygame.draw.circle(
                     self.screen, INTERSECTION_COLOR, end_point, 3)
 
-    def __draw_infos(self):
+    def __draw_infos_box(self):
         info_vertices = [(0, SCREEN_HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT), (
             SCREEN_WIDTH, SCREEN_HEIGHT - INFO_HEIGHT), (0, SCREEN_HEIGHT - INFO_HEIGHT)]
         pygame.draw.polygon(self.screen, INFO_BACK_COLOR, info_vertices)
 
-    def __draw_create_infos(self):
-        font_size = 18
-        text_font = pygame.font.SysFont('Comic Sans MS', font_size)
+    def __draw_design_infos(self):
+        self.__draw_infos_box()
 
-        s = "R: create rectangle"
+        text_font = pygame.font.SysFont('Comic Sans MS', INFO_FONT_SIZE)
 
-        border = 10
-        text_surface = text_font.render(
-            str(s), True, COLOR_BLACK, COLOR_WHITE)
-        self.screen.blit(text_surface, b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border))
+        shapes = [{"key": "R", "description": "create rectangle"}, {"key": "C", "description": "create circle"}]
+
+        max_len = 0
+        for six, shape in enumerate(shapes):
+            s = "{}: {}".format(shape["key"], shape["description"])
+            text_surface = text_font.render(s, True, COLOR_BLACK, COLOR_WHITE)
+
+            pos, max_len = self.__get_info_pos(six, len(s), max_len)
+            self.screen.blit(text_surface, pos)
 
     def __draw_simulation_infos(self):
-        font_size = 18
-        text_font = pygame.font.SysFont('Comic Sans MS', font_size)
+        self.__draw_infos_box()
+
+        text_font = pygame.font.SysFont('Comic Sans MS', INFO_FONT_SIZE)
 
         # fps
         fps = round(self.clock.get_fps())
