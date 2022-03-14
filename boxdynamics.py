@@ -742,7 +742,18 @@ class BoxEnv(gym.Env):
             str(fps), True, COLOR_BLACK, fps_color)
         self.screen.blit(text_surface, fps_point)
 
-        # infos
+        max_len = 0
+        for iix, info in enumerate(self.screen_infos):
+            info_str = "> {}: {}".format(info["name"], info["value"])
+            text_surface = text_font.render(
+                info_str, True, COLOR_BLACK, COLOR_WHITE
+            )
+
+            pos, max_len = self.__get_info_pos(iix, len(info_str), max_len)
+
+            self.screen.blit(text_surface, pos)
+
+    def __get_info_pos(self, str_ix, str_len, max_str_len):
         border = 10  # info border pixels
         # first info coordinate
         info_coord = b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border)
@@ -751,25 +762,19 @@ class BoxEnv(gym.Env):
         x_inc = 0
         y_slots = y_space / y_inc
 
-        max_info_str_len = 0
-        for iix, info in enumerate(self.screen_infos):
-            info_str = "> {}: {}".format(info["name"], info["value"])
-            text_surface = text_font.render(
-                info_str, True, COLOR_BLACK, COLOR_WHITE
-            )
+        pos_inc = b2Vec2(x_inc, (str_ix % y_slots)*y_inc)
+        pos = info_coord + pos_inc
 
-            pos_inc = b2Vec2(x_inc, (iix % y_slots)*y_inc)
-            pos = info_coord + pos_inc
-            self.screen.blit(text_surface, pos)
+        if str_len > max_str_len:
+            max_str_len = str_len
+        if (str_ix + 1) % y_slots == 0:
+            x_inc += max_str_len * 7
+            max_str_len = 0
+        if x_inc + max_str_len > SCREEN_WIDTH:
+            warnings.warn(
+                "Some infos are not visible, increase INFO_HEIGHT")
 
-            if len(info_str) > max_info_str_len:
-                max_info_str_len = len(info_str)
-            if (iix + 1) % y_slots == 0:
-                x_inc += max_info_str_len * 7
-                max_info_str_len = 0
-            if x_inc + max_info_str_len > SCREEN_WIDTH:
-                warnings.warn(
-                    "Some infos are not visible, increase INFO_HEIGHT")
+        return pos, max_str_len
 
     # transform point in world coordinates to point in pygame coordinates
     def __pygame_coord(self, point):
