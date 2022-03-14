@@ -122,6 +122,13 @@ class Observation:
     distance: float = np.inf
     body: b2Body = None
 
+@dataclass
+class DesignShapeData:
+    shape: Enum = BodyShape.BOX
+    points: List = field(default_factory=list) # center and radius for circles
+    type: Enum = BodyType.STATIC_OBSTACLE
+    color: tuple = STATIC_OBSTACLE_COLOR
+
 
 class ContactListener(b2ContactListener):
     def __init__(self):
@@ -326,13 +333,14 @@ class BoxEnv(gym.Env):
         first_set = False
         second_set = False
 
-        box = [b2Vec2(0, 0) for _ in range(4)]
+        box = DesignShapeData()
+
+        box.points = [b2Vec2(0, 0) for _ in range(4)]
         self.design_shapes.append(box)
 
         while not (first_set and second_set):
             # drawing borders and info box
             self.__render_design()
-
 
             mouse_pos = b2Vec2(pygame.mouse.get_pos())
 
@@ -346,19 +354,20 @@ class BoxEnv(gym.Env):
                         start_pos = mouse_pos
 
             self.design_shapes.remove(box)
+            # only update box from here
 
             if first_set:
-                box[0] = start_pos
-                box[1] = b2Vec2(mouse_pos.x, start_pos.y)
-                box[2] = mouse_pos
-                box[3] = b2Vec2(start_pos.x, mouse_pos.y)
+                box.points[0] = start_pos
+                box.points[1] = b2Vec2(mouse_pos.x, start_pos.y)
+                box.points[2] = mouse_pos
+                box.points[3] = b2Vec2(start_pos.x, mouse_pos.y)
             if first_set and second_set:
-                box[0] = start_pos
-                box[1] = b2Vec2(end_pos.x, start_pos.y)
-                box[2] = end_pos
-                box[3] = b2Vec2(start_pos.x, end_pos.y)
-                print("rect ok")
+                box.points[0] = start_pos
+                box.points[1] = b2Vec2(end_pos.x, start_pos.y)
+                box.points[2] = end_pos
+                box.points[3] = b2Vec2(start_pos.x, end_pos.y)
 
+            # only update box until here
             self.design_shapes.append(box)
 
             sleep(DESIGN_SLEEP)
@@ -369,7 +378,7 @@ class BoxEnv(gym.Env):
         finished = False
 
         while not finished:
-            # drawing borders and info box
+            # drawing borders, infos and currently designed shapes
             self.__render_design()
 
             for event in pygame.event.get():
@@ -391,8 +400,10 @@ class BoxEnv(gym.Env):
 
     def __create_from_design_shapes(self):
         for shape in self.design_shapes:
-            pos = b2Vec2(shape[0].x + (shape[1].x - shape[0].x) / 2, shape[0].y + (shape[3].y - shape[0].y) / 2)
-            size = b2Vec2(abs(shape[1].x - shape[0].x) / 2, abs(shape[3].y - shape[0].y) / 2)
+            points = shape.points
+
+            pos = b2Vec2(points[0].x + (points[1].x - points[0].x) / 2, points[0].y + (points[3].y - points[0].y) / 2)
+            size = b2Vec2(abs(points[1].x - points[0].x) / 2, abs(points[3].y - points[0].y) / 2)
 
             pos = self.__world_coord(pos)
             size = size / PPM
@@ -684,6 +695,8 @@ class BoxEnv(gym.Env):
 
     # render functions
     def __render_design(self):
+        # draws borders, design infos and currently designed shapes
+
         self.screen.fill(BACK_COLOR)
         self.__draw_bodies([BodyType.BORDER])
         self.__draw_design_infos()
@@ -692,7 +705,7 @@ class BoxEnv(gym.Env):
 
     def __draw_design_shapes(self):
         for shape in self.design_shapes:
-            pygame.draw.polygon(self.screen, COLOR_GREEN, shape)
+            pygame.draw.polygon(self.screen, COLOR_GREEN, shape.points)
 
     def __draw_bodies(self, types):
         # Draw the world based on bodies levels
