@@ -1,8 +1,10 @@
+from cmath import rect
 import math
 import random
 
 from enum import Enum
 from dataclasses import dataclass, field
+from time import sleep
 from typing import List
 import warnings
 import numpy as np
@@ -40,7 +42,7 @@ SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
 PPM = 10  # pixel per meter
 
 # screen layout
-INFO_HEIGHT = SCREEN_HEIGHT * 0.1  # pixels
+INFO_HEIGHT = SCREEN_HEIGHT * 0.2  # pixels
 
 # world
 WORLD_WIDTH = SCREEN_WIDTH / PPM  # meters
@@ -66,7 +68,7 @@ MAX_FORCE = 10
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
 OBSERVATION_MAX_DISTANCE = 200  # how far can the agent see
-OBSERVATION_NUM = 100  # number of distance vectors
+OBSERVATION_NUM = 10  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2
@@ -77,7 +79,7 @@ AGENT_HEAD_INSIDE = 0.2
 
 # objects
 AGENT_MASS = 0.2  # kg
-MOVING_OBSTACLE_DENSITY = 1000000000  # kg/(m2)
+MOVING_OBSTACLE_DENSITY = 1000000000  # kg/(m*m)
 
 
 class BodyType(Enum):
@@ -224,7 +226,7 @@ class BoxEnv(gym.Env):
         self.__create_agent()
 
         # defining own polygon draw function
-        b2PolygonShape.draw = self.__draw_polygon
+        # b2PolygonShape.draw = self.__draw_polygon
 
         self.prev_state = None
 
@@ -298,15 +300,18 @@ class BoxEnv(gym.Env):
                          for i, b in enumerate(self.world.bodies)]
         bodies_levels.sort(key=lambda x: x[1], reverse=True)
 
-        for bix, level in bodies_levels:
-            for fixture in self.world.bodies[bix].fixtures:
-                fixture.shape.draw(fixture, self.world.bodies[bix])
+        # for bix, level in bodies_levels:
+        #     for fixture in self.world.bodies[bix].fixtures:
+        #         fixture.shape.draw(fixture, self.world.bodies[bix])
+
+        self.__draw_bodies(BodyType)
 
         self.__draw_action()
         self.__draw_observations()
         self.__draw_distances()
         # last for a reason
         self.__draw_infos()
+        self.__draw_simulation_infos()
 
         pygame.display.flip()
         self.clock.tick(TARGET_FPS)
@@ -315,6 +320,69 @@ class BoxEnv(gym.Env):
         for body in self.world.bodies:
             self.world.DestroyBody(body)
         pygame.quit()
+
+    def world_design(self):
+        bodies = list()
+        vertices = [b2Vec2(0, 0) for _ in range(4)]
+
+        drawing_rect = False
+        rectangle_mode = False
+
+        finished = False
+
+        while not finished:
+            self.screen.fill(BACK_COLOR)
+            self.__draw_bodies([BodyType.BORDER])
+            self.__draw_infos()
+            self.__draw_create_infos()
+
+            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT or \
+                        (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                    # The user closed the window or pressed escape
+                    self.__destroy()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                    rectangle_mode = True
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                    finished = True
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if drawing_rect:
+                        rectangle_mode = False
+                        drawing_rect = False
+                    if rectangle_mode:
+                        vertices = [b2Vec2(0, 0) for _ in range(4)]
+                        start_pos = mouse_pos
+                        drawing_rect = True
+
+            if drawing_rect:
+                try:
+                    bodies.remove(vertices)
+                except ValueError:
+                    pass
+                vertices[0] = start_pos
+                vertices[1] = b2Vec2(mouse_pos.x, start_pos.y)
+                vertices[2] = mouse_pos
+                vertices[3] = b2Vec2(start_pos.x, mouse_pos.y)
+                bodies.append(vertices)
+
+            for body in bodies:
+                pygame.draw.polygon(self.screen, COLOR_GREEN, body)
+            pygame.display.flip()
+
+            sleep(0.01)
+        
+        for body in bodies:
+            pos = b2Vec2(body[0].x + (body[1].x - body[0].x) / 2, body[0].y + (body[3].y - body[0].y) / 2)
+            size = b2Vec2(abs(body[1].x - body[0].x) / 2, abs(body[3].y - body[0].y) / 2)
+
+            pos = self.__world_coord(pos)
+            size = size / PPM
+            self.create_static_obstacle(pos, size)
+            print(pos, size)
+        
+        pass
 
     def __user_input(self):
         # TODO: create build mode in which the user can create bodies with
@@ -603,11 +671,13 @@ class BoxEnv(gym.Env):
         return WORLD_WIDTH, WORLD_HEIGHT
 
     # render functions
-    def __draw_polygon(self, polygon, body):
-        vertices = [(body.transform * v) *
-                    PPM for v in polygon.shape.vertices]
-        vertices = [(v[0], SCREEN_HEIGHT - v[1]) for v in vertices]
-        pygame.draw.polygon(self.screen, body.userData.color, vertices)
+    def __draw_bodies(self, types):
+        for body in self.world.bodies:
+            if body.userData.type in types:
+                for fixture in body.fixtures:
+                    vertices = [self.__pygame_coord(body.transform * v) for v in fixture.shape.vertices]
+                    pygame.draw.polygon(self.screen, body.userData.color, vertices)
+        pass
 
     def __draw_action(self):
         action_start = self.__pygame_coord(self.agent_head)
@@ -649,6 +719,18 @@ class BoxEnv(gym.Env):
             SCREEN_WIDTH, SCREEN_HEIGHT - INFO_HEIGHT), (0, SCREEN_HEIGHT - INFO_HEIGHT)]
         pygame.draw.polygon(self.screen, INFO_BACK_COLOR, info_vertices)
 
+    def __draw_create_infos(self):
+        font_size = 18
+        text_font = pygame.font.SysFont('Comic Sans MS', font_size)
+
+        s = "R: create rectangle"
+
+        border = 10
+        text_surface = text_font.render(
+            str(s), True, COLOR_BLACK, COLOR_WHITE)
+        self.screen.blit(text_surface, b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border))
+
+    def __draw_simulation_infos(self):
         font_size = 18
         text_font = pygame.font.SysFont('Comic Sans MS', font_size)
 
