@@ -28,8 +28,8 @@ class ScreenLayout:
     width: int = 800  # pixels
     height: int = 800
     size: b2Vec2 = b2Vec2(width, height)
-    simulation_xshift = 0
-    simulation_yshift = 0
+    simulation_xshift = 100
+    simulation_yshift = 70
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
     simulation_size: b2Vec2 = b2Vec2(600, 600)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
@@ -113,15 +113,16 @@ class BoxUI():
     def render(self):
         self.screen.fill(color.BACK)
 
+        if self.mode == Mode.WORLD_DESIGN:
+            self.render_design()
+
+        self.render_world()
+
         if self.mode == Mode.SIMULATION:
             self.render_action()
             self.render_observations()
             self.draw_distances()
 
-        elif self.mode == Mode.WORLD_DESIGN:
-            self.render_design()
-
-        self.render_world()
         pygame.display.flip()
         self.clock.tick(self.target_fps)
         pass

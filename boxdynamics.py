@@ -584,8 +584,8 @@ class BoxEnv(gym.Env):
         body.userData.level = level
 
     # user functions
-    def get_world_size(self):
+    def get_world_size(self) -> tuple:
         return self.world_width, self.world_height
 
-    def __world_coord(self, point):
+    def __world_coord(self, point: b2Vec2) -> b2Vec2:
         return b2Vec2(point.x / PPM, (self.screen_height - point.y) / PPM) - self.world_pos
