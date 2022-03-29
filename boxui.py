@@ -516,14 +516,14 @@ class BoxUI():
         p3 = body.points[1]
         if body.rotated:
 
-            line11 = self.get_line_eq_angle(
+            line11 = get_line_eq_angle(
                 p1, body.beta + (body.alpha - body.angle))
-            line12 = self.get_line_eq_angle(
+            line12 = get_line_eq_angle(
                 p1, body.gamma + (body.alpha - body.angle))
 
-            line21 = self.get_line_eq_angle(
+            line21 = get_line_eq_angle(
                 p3, body.gamma + (body.alpha - body.angle))
-            line22 = self.get_line_eq_angle(
+            line22 = get_line_eq_angle(
                 p3, body.beta + (body.alpha - body.angle))
 
             p2 = get_intersection(line11, line21)
