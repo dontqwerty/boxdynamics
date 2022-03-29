@@ -7,12 +7,13 @@ from typing import List
 import gym
 import numpy as np
 import pygame
-from Box2D import (b2Body, b2ContactListener, b2PolygonShape,
-                   b2RayCastCallback, b2Vec2, b2World)
+from Box2D import (b2Body, b2Contact, b2ContactListener, b2Fixture,
+                   b2PolygonShape, b2RayCastCallback, b2Vec2, b2World)
 
 import boxcolors as color
 from boxdata import BodyShape, BodyType
 from boxui import BoxUI, Mode, ScreenLayout
+from boxutils import get_line_eq
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
@@ -59,7 +60,7 @@ class BodyData:
     color: tuple = color.WHITE
     shape: Enum = BodyShape.BOX
     # list of bodies in contact with this body
-    contact_bodies: List = field(default_factory=list)
+    contact_bodies: List[b2Body] = field(default_factory=list)
     reward: float = 0  # reward when agents hits the object
     # level of deepness when drawing screen (0 is above everything else)
     # if multiple object share same level, first created objects are below others
@@ -79,9 +80,9 @@ class Observation:
 class ContactListener(b2ContactListener):
     def __init__(self):
         b2ContactListener.__init__(self)
-        self.contact_bodies = list()
+        self.contact_bodies: List[dict] = list()
 
-    def BeginContact(self, contact):
+    def BeginContact(self, contact: b2Contact):
         contact.fixtureA.body.userData.contact_bodies.append(
             contact.fixtureB.body)
         contact.fixtureB.body.userData.contact_bodies.append(
@@ -178,7 +179,7 @@ class BoxEnv(gym.Env):
                                 self.screen_layout.simulation_pos.y) / PPM - b2Vec2(0, self.world_height)
 
         # it's like the observation space but with more informations
-        self.data = list()  # list of Observation dataclasses
+        self.data: List[Observation] = list()  # list of Observation dataclasses
 
         # adding world borders
         self.__create_borders()
@@ -268,7 +269,11 @@ class BoxEnv(gym.Env):
 
     def __create_from_design_data(self):
         for design in self.ui.design_bodies:
-            points = self.get_vertices(design.points[0], design.points[1])
+            points = design.vertices
+
+            if design.shape == BodyShape.BOX:
+                pos = get_line_eq(design.points[0], design.points[1])
+                pass
 
             pos = b2Vec2(points[0].x + (points[1].x - points[0].x) / 2,
                          points[0].y + (points[3].y - points[0].y) / 2)
@@ -430,7 +435,7 @@ class BoxEnv(gym.Env):
         # TODO: border reward
 
         pos = b2Vec2(self.world_width / 2, inside - (BOUNDARIES_WIDTH / 2))
-        self.bottom_border = self.world.CreateStaticBody(
+        self.bottom_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
                 box=(self.world_width / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
@@ -439,7 +444,7 @@ class BoxEnv(gym.Env):
 
         pos = b2Vec2(self.world_width / 2, self.world_height -
                      inside + (BOUNDARIES_WIDTH / 2))
-        self.top_border = self.world.CreateStaticBody(
+        self.top_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
                 box=(self.world_width / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
@@ -447,7 +452,7 @@ class BoxEnv(gym.Env):
         )
 
         pos = b2Vec2(inside - (BOUNDARIES_WIDTH / 2), self.world_height / 2)
-        self.left_border = self.world.CreateStaticBody(
+        self.left_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, self.world_height / 2 + BOUNDARIES_WIDTH)),
@@ -456,7 +461,7 @@ class BoxEnv(gym.Env):
 
         pos = b2Vec2(self.world_width - inside +
                      (BOUNDARIES_WIDTH / 2), self.world_height / 2)
-        self.right_border = self.world.CreateStaticBody(
+        self.right_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
                 box=(BOUNDARIES_WIDTH / 2, self.world_height / 2 + BOUNDARIES_WIDTH)),
@@ -481,24 +486,24 @@ class BoxEnv(gym.Env):
             print(type)
             assert False
 
-    def get_border_data(self):
+    def get_border_data(self) -> BodyData:
         return BodyData(type=BodyType.BORDER, color=color.BORDER)
 
-    def get_agent_data(self):
+    def get_agent_data(self) -> BodyData:
         return BodyData(type=BodyType.AGENT, color=color.AGENT, level=np.inf)
 
-    def get_static_obstacle_data(self):
+    def get_static_obstacle_data(self) -> BodyData:
         return BodyData(type=BodyType.STATIC_OBSTACLE, color=color.STATIC_OBSTACLE)
 
-    def get_moving_obstacle_data(self):
+    def get_moving_obstacle_data(self) -> BodyData:
         return BodyData(
             type=BodyType.MOVING_OBSTACLE, color=color.MOVING_OBSTACLE)
 
-    def get_static_zone_data(self):
+    def get_static_zone_data(self) -> BodyData:
         return BodyData(
             type=BodyType.STATIC_ZONE, color=color.STATIC_ZONE)
 
-    def get_moving_zone_data(self):
+    def get_moving_zone_data(self) -> BodyData:
         return BodyData(
             type=BodyType.MOVING_ZONE, color=color.MOVING_ZONE)
 
@@ -523,9 +528,9 @@ class BoxEnv(gym.Env):
 
         area = agent_width * agent_height
 
-        self.agent_body = self.world.CreateDynamicBody(
+        self.agent_body: b2Body = self.world.CreateDynamicBody(
             position=agent_pos, angle=agent_angle)
-        self.agent_fix = self.agent_body.CreatePolygonFixture(
+        self.agent_fix: b2Fixture = self.agent_body.CreatePolygonFixture(
             box=(agent_width, agent_height), density=AGENT_MASS/area)
 
         self.agent_body.userData = self.get_agent_data()
@@ -535,10 +540,10 @@ class BoxEnv(gym.Env):
 
     # TODO: support colors, circles
     def create_static_obstacle(self, pos, size, angle=0, reward=-1, level=3):
-        body = self.world.CreateStaticBody(
+        body: b2Body = self.world.CreateStaticBody(
             position=pos, angle=angle
         )
-        fixture = body.CreatePolygonFixture(
+        fixture: b2Fixture = body.CreatePolygonFixture(
             box=size)
 
         body.userData = self.get_static_obstacle_data()
@@ -546,10 +551,10 @@ class BoxEnv(gym.Env):
         body.userData.level = level
 
     def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=-2, level=2):
-        body = self.world.CreateDynamicBody(
+        body: b2Body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False, )
-        _ = body.CreatePolygonFixture(
+        _: b2Fixture = body.CreatePolygonFixture(
             box=size, density=MOVING_OBSTACLE_DENSITY)
 
         body.userData = self.get_moving_obstacle_data()
@@ -557,9 +562,9 @@ class BoxEnv(gym.Env):
         body.userData.level = level
 
     def create_static_zone(self, pos, size, angle=0, reward=1, level=3):
-        body = self.world.CreateStaticBody(
+        body: b2Body = self.world.CreateStaticBody(
             position=pos, angle=angle)
-        fixture = body.CreatePolygonFixture(
+        fixture: b2Fixture = body.CreatePolygonFixture(
             box=size)
         fixture.sensor = True
 
@@ -570,10 +575,10 @@ class BoxEnv(gym.Env):
         body.userData.level = level
 
     def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=2, level=1):
-        body = self.world.CreateDynamicBody(
+        body: b2Body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False)
-        fixture = body.CreatePolygonFixture(
+        fixture: b2Fixture = body.CreatePolygonFixture(
             box=size)
 
         fixture.sensor = True
@@ -586,17 +591,5 @@ class BoxEnv(gym.Env):
     def get_world_size(self):
         return self.world_width, self.world_height
 
-    # # transform point in world coordinates to point in pygame coordinates
-    # def __pygame_coord(self, point):
-    #     return b2Vec2(point.x * PPM, self.screen_height - (point.y * PPM))
-
     def __world_coord(self, point):
         return b2Vec2(point.x / PPM, (self.screen_height - point.y) / PPM) - self.world_pos
-
-    def get_vertices(self, p1: b2Vec2, p2: b2Vec2):
-        vertices = list()
-        vertices.append(p1)
-        vertices.append(b2Vec2(p2.x, p1.y))
-        vertices.append(p2)
-        vertices.append(b2Vec2(p1.x, p2.y))
-        return vertices

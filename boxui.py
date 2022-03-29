@@ -12,6 +12,7 @@ from Box2D import b2Vec2
 
 import boxcolors as color
 from boxdata import BodyShape, BodyType
+from boxutils import get_intersection, get_line_eq_angle
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
@@ -43,7 +44,8 @@ class DesignData:
     shape: Enum = BodyShape.BOX  # used if creating
     selected: bool = False  # TODO: selectable
 
-    points: List = field(default_factory=list)  # center and radius for circles
+    points: List[b2Vec2] = field(default_factory=list)  # center and radius for circles
+    vertices: List[b2Vec2] = field(default_factory=list) # all four vertices for rectangles
     rotated = False
     alpha: float = 0
     beta: float = 0
@@ -68,7 +70,7 @@ class BoxUI():
         self.mode = Mode.NONE
         self.prev_mode = Mode.NONE
 
-        self.design_bodies = list()
+        self.design_bodies: List[DesignData] = list()
 
         # setting up design variables
         self.design_data = DesignData()
@@ -109,7 +111,6 @@ class BoxUI():
 
     def render(self):
         self.screen.fill(color.BACK)
-        self.render_world()
 
         if self.mode == Mode.SIMULATION:
             self.render_action()
@@ -118,6 +119,8 @@ class BoxUI():
 
         elif self.mode == Mode.WORLD_DESIGN:
             self.render_design()
+
+        self.render_world()
         pygame.display.flip()
         self.clock.tick(self.target_fps)
         pass
@@ -261,17 +264,17 @@ class BoxUI():
                                 # self.design_data.gamma += (self.design_data.alpha - self.design_data.angle)
 
 
-                            if self.design_data.mouse_radius is None:
-                                self.design_data.mouse_radius = (
-                                    self.design_data.points[0] - mouse_pos).length
+                            # TODO: second round of rotating
+                            # if self.design_data.mouse_radius is None:
+                            #     self.design_data.mouse_radius = (
+                            #         self.design_data.points[0] - mouse_pos).length
 
-                            print(self.design_data.points[0], b2Vec2(math.cos(self.design_data.alpha), math.sin(
-                                self.design_data.alpha)), self.design_data.mouse_radius)
                             mouse_pos = self.design_data.points[0] + b2Vec2(math.cos(self.design_data.alpha), math.sin(
                                 self.design_data.alpha)) * self.design_data.mouse_radius
                             pass
 
                         if points_num == 2:
+                            self.design_data.vertices = self.get_vertices(self.design_data)
                             # replacing old point with new point on mouse position
                             self.design_data.points.pop()
 
@@ -513,18 +516,18 @@ class BoxUI():
         p3 = body.points[1]
         if body.rotated:
 
-            line11 = self.__get_line_eq_angle(
+            line11 = self.get_line_eq_angle(
                 p1, body.beta + (body.alpha - body.angle))
-            line12 = self.__get_line_eq_angle(
+            line12 = self.get_line_eq_angle(
                 p1, body.gamma + (body.alpha - body.angle))
 
-            line21 = self.__get_line_eq_angle(
+            line21 = self.get_line_eq_angle(
                 p3, body.gamma + (body.alpha - body.angle))
-            line22 = self.__get_line_eq_angle(
+            line22 = self.get_line_eq_angle(
                 p3, body.beta + (body.alpha - body.angle))
 
-            p2 = self.__get_intersection(line11, line21)
-            p4 = self.__get_intersection(line12, line22)
+            p2 = get_intersection(line11, line21)
+            p4 = get_intersection(line12, line22)
 
         else:
             p2 = b2Vec2(p3.x, p1.y)
@@ -537,26 +540,3 @@ class BoxUI():
         point = b2Vec2(point.x * self.ppm, (self.env.world_height -
                        point.y) * self.ppm) + self.layout.simulation_pos
         return point
-
-    def __get_line_eq_angle(self, point: b2Vec2, angle: float):
-        # m*x + n = y
-        m = math.tan(angle)
-        n = point.y - m*point.x
-
-        return m, n
-
-    def __get_intersection(self, line1, line2):
-        intersection = [-1, -1]
-
-        a1 = line1[0]
-        b1 = -1
-        c1 = line1[1]
-
-        a2 = line2[0]
-        b2 = -1
-        c2 = line2[1]
-
-        intersection[0] = (b1*c2 - b2*c1) / (a1*b2 - a2*b1)
-        intersection[1] = (c1*a2 - c2*a1) / (a1*b2 - a2*b1)
-
-        return intersection
