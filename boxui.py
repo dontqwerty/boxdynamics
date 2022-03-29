@@ -50,8 +50,6 @@ class DesignData:
     gamma: float = 0
     angle: float = 0
     mouse_radius: float = None
-    width: float = 0
-    height: float = 0
     rotating: bool = False  # used to rotate the object
     type: Enum = BodyType.STATIC_OBSTACLE
     color: Enum = color.BROWN
@@ -262,6 +260,13 @@ class BoxUI():
                                 # self.design_data.beta += (self.design_data.alpha - self.design_data.angle)
                                 # self.design_data.gamma += (self.design_data.alpha - self.design_data.angle)
 
+
+                            if self.design_data.mouse_radius is None:
+                                self.design_data.mouse_radius = (
+                                    self.design_data.points[0] - mouse_pos).length
+
+                            print(self.design_data.points[0], b2Vec2(math.cos(self.design_data.alpha), math.sin(
+                                self.design_data.alpha)), self.design_data.mouse_radius)
                             mouse_pos = self.design_data.points[0] + b2Vec2(math.cos(self.design_data.alpha), math.sin(
                                 self.design_data.alpha)) * self.design_data.mouse_radius
                             pass

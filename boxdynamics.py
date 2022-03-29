@@ -162,6 +162,8 @@ class BoxEnv(gym.Env):
         self.observation_keys = ["distances",
                                  "body_types", "position", "contacts", "body_velocities", "linear_velocity", "velocity_mag"]
 
+        self.observation_keys = ["distances"]
+
         self.observation_space = gym.spaces.Dict(self.__get_observation_dict())
 
         self.screen_layout = ScreenLayout()
