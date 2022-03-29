@@ -8,12 +8,9 @@
 
         cd boxenv
 
-- Create a virtual enviroment (optional)
+- Create and activate a virtual enviroment (optional)
 
         python3 -m venv env
-
-- Activate virtual enviroment
-
         source env/bin/activate
 
 - Install requirements
