@@ -31,7 +31,12 @@ def get_intersection(line1, line2):
     b2 = -1
     c2 = line2[1]
 
-    intersection[0] = (b1*c2 - b2*c1) / (a1*b2 - a2*b1)
-    intersection[1] = (c1*a2 - c2*a1) / (a1*b2 - a2*b1)
+    try:
+        intersection[0] = (b1*c2 - b2*c1) / (a1*b2 - a2*b1)
+        intersection[1] = (c1*a2 - c2*a1) / (a1*b2 - a2*b1)
+    except ZeroDivisionError:
+        # TODO: handle this
+        print("Intersection calculation failed")
+        pass
 
     return b2Vec2(intersection)

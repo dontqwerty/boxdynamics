@@ -13,7 +13,7 @@ from Box2D import (b2Body, b2Contact, b2ContactListener, b2Fixture,
 import boxcolors as color
 from boxdef import BodyShape, BodyType
 from boxui import BoxUI, Mode, ScreenLayout
-from boxutils import get_line_eq
+from boxutils import get_line_eq, get_intersection
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
@@ -269,21 +269,17 @@ class BoxEnv(gym.Env):
 
     def __create_from_design_data(self):
         for design in self.ui.design_bodies:
-            points = design.vertices
+            points = [self.__world_coord(point) for point in design.vertices]
 
-            if design.shape == BodyShape.BOX:
-                pos = get_line_eq(design.points[0], design.points[1])
-                pass
+            line1 = get_line_eq(points[0], points[2])
+            line2 = get_line_eq(points[1], points[3])
+            pos = get_intersection(line1, line2)
+            width = (points[0] - points[1]).length / 2
+            height = (points[1] - points[2]).length / 2
+            size = (width, height)
+            angle = -(design.alpha - design.angle)
 
-            pos = b2Vec2(points[0].x + (points[1].x - points[0].x) / 2,
-                         points[0].y + (points[3].y - points[0].y) / 2)
-            size = b2Vec2(abs(points[1].x - points[0].x) / 2,
-                          abs(points[3].y - points[0].y) / 2)
-
-            pos = self.__world_coord(pos)
-            size = size / PPM
-            # TODO: add color
-            self.__create_body(pos, size, design.type, design.angle)
+            self.__create_body(pos, size, design.type, angle)
 
         self.ui.design_bodies.clear()
 

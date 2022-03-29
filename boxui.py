@@ -28,8 +28,8 @@ class ScreenLayout:
     width: int = 800  # pixels
     height: int = 800
     size: b2Vec2 = b2Vec2(width, height)
-    simulation_xshift = 50
-    simulation_yshift = 20
+    simulation_xshift = 0
+    simulation_yshift = 0
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
     simulation_size: b2Vec2 = b2Vec2(600, 600)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
@@ -95,7 +95,8 @@ class BoxUI():
 
     def quit(self):
         pygame.quit()
-        # TODO: signal quitting
+        # TODO: signal quitting to BoxEnv
+        exit()
 
     def set_mode(self, mode: Mode):
         self.prev_mode = self.mode
