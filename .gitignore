@@ -131,3 +131,4 @@ dmypy.json
 # Custom
 test.py
 Box2D-body-and-fixture.txt
+boxuitest.py

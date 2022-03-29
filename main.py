@@ -4,9 +4,7 @@ from boxdynamics import BoxEnv
 env = BoxEnv()
 
 
-env.world_design()
 
-env.reset()
 
 width, height = env.get_world_size()
 
@@ -21,14 +19,15 @@ width, height = env.get_world_size()
 # env.create_moving_zone((50,70), (7,5), (10,0))
 # env.create_moving_zone((60,10), (1,7), (10,0))
 
-# env.create_static_obstacle((30,40), (10,3))
-
 # env.create_static_zone((60,60), (10,10))
 # env.create_static_zone((30,30), (5,50))
 
+env.reset()
 action = env.action_space.sample()
 action[0] = 0
 action[1] = 0.0001
+
+env.world_design()
 
 counter = 0
 total_reward = 0

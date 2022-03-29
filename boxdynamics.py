@@ -1,6 +1,9 @@
-from cmath import rect
 import math
 import random
+
+import boxcolors as color
+from boxdata import BodyShape, BodyType
+from boxui import ScreenLayout, BoxUI, Mode
 
 from enum import Enum
 from dataclasses import dataclass, field
@@ -12,45 +15,11 @@ import gym
 import pygame
 from Box2D import b2Vec2, b2World, b2Body, b2PolygonShape, b2ContactListener, b2RayCastCallback
 
-# colors
-COLOR_BLACK = (0, 0, 0, 0)
-COLOR_GREY = (128, 128, 128, 255)
-COLOR_PURPLE = (128, 0, 255, 255)
-COLOR_BLUE = (0, 0, 255, 255)
-COLOR_GREEN = (0, 255, 0, 255)
-COLOR_TURQUOISE = (0, 255, 255, 255)
-COLOR_RED = (255, 0, 0, 255)
-COLOR_MAGENTA = (255, 0, 255, 255)
-COLOR_YELLOW = (255, 255, 0, 255)
-COLOR_WHITE = (255, 255, 255, 255)
-
-BACK_COLOR = COLOR_BLACK
-INFO_BACK_COLOR = COLOR_GREY
-AGENT_COLOR = COLOR_MAGENTA
-STATIC_OBSTACLE_COLOR = COLOR_GREY
-MOVING_OBSTACLE_COLOR = COLOR_YELLOW
-STATIC_ZONE_COLOR = COLOR_TURQUOISE
-MOVING_ZONE_COLOR = COLOR_BLUE
-BORDER_COLOR = COLOR_WHITE
-ACTION_COLOR = COLOR_GREEN
-OBSERVATION_COLOR = COLOR_YELLOW
-INTERSECTION_COLOR = COLOR_RED
-
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
-SCREEN_WIDTH, SCREEN_HEIGHT = 800, 800  # pixels
 PPM = 10  # pixel per meter
 
-# screen layout
-INFO_HEIGHT = SCREEN_HEIGHT * 0.2  # pixels
-INFO_FONT_SIZE = 18
-
-DESIGN_SLEEP = 0.01 # delay in seconds while designing world
-
 # world
-WORLD_WIDTH = SCREEN_WIDTH / PPM  # meters
-WORLD_HEIGHT = (SCREEN_HEIGHT - INFO_HEIGHT) / PPM
-
 BOUNDARIES_WIDTH = 10  # meters
 
 # velocity and position iterations
@@ -70,12 +39,12 @@ MAX_FORCE = 10
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
-OBSERVATION_MAX_DISTANCE = 200  # how far can the agent see
+OBSERVATION_MAX_DISTANCE = 2000  # how far can the agent see
 OBSERVATION_NUM = 10  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2
-AGENT_LINEAR_DAMPING = 0.5
+AGENT_LINEAR_DAMPING = 0.1
 
 # corrections
 AGENT_HEAD_INSIDE = 0.2
@@ -85,25 +54,10 @@ AGENT_MASS = 0.2  # kg
 MOVING_OBSTACLE_DENSITY = 1000000000  # kg/(m*m)
 
 
-class BodyType(Enum):
-    AGENT = 0
-    STATIC_OBSTACLE = 1
-    MOVING_OBSTACLE = 2
-    STATIC_ZONE = 3
-    MOVING_ZONE = 4
-    BORDER = 5
-    DEFAULT = 6
-
-
-class BodyShape(Enum):
-    BOX = 0
-    CIRCLE = 1
-
-
 @dataclass
 class BodyData:
     type: Enum = BodyType.DEFAULT
-    color: tuple = COLOR_WHITE
+    color: tuple = color.WHITE
     shape: Enum = BodyShape.BOX
     # list of bodies in contact with this body
     contact_bodies: List = field(default_factory=list)
@@ -121,14 +75,6 @@ class Observation:
     intersection: b2Vec2 = (np.inf, np.inf)
     distance: float = np.inf
     body: b2Body = None
-
-@dataclass
-class DesignShapeData:
-    shape: Enum = BodyShape.BOX
-    points: List = field(default_factory=list) # center and radius for circles
-    type: Enum = BodyType.STATIC_OBSTACLE
-    color: tuple = STATIC_OBSTACLE_COLOR
-
 
 class ContactListener(b2ContactListener):
     def __init__(self):
@@ -211,22 +157,25 @@ class BoxEnv(gym.Env):
         self.user_action = None
         self.manual_mode = False
 
-        # TODO: inside_zone
+        # TODO: contacts
         # the observation spaces is defined by observation_keys
         self.observation_keys = ["distances",
-                                 "body_types", "position", "inside_zone", "body_velocities", "linear_velocity", "velocity_mag"]
+                                 "body_types", "position", "contacts", "body_velocities", "linear_velocity", "velocity_mag"]
 
         self.observation_space = gym.spaces.Dict(self.__get_observation_dict())
 
+        self.screen_layout = ScreenLayout()
+        self.ui = BoxUI(self, self.screen_layout, PPM, TARGET_FPS)
+
+        self.screen_width = self.screen_layout.width
+        self.screen_height = self.screen_layout.height
+
+        self.world_width = self.screen_layout.simulation_size.x / PPM
+        self.world_height = self.screen_layout.simulation_size.y / PPM
+        self.world_pos = b2Vec2(self.screen_layout.simulation_pos.x, self.screen_height - self.screen_layout.simulation_pos.y) / PPM - b2Vec2(0, self.world_height)
+
         # it's like the observation space but with more informations
         self.data = list()  # list of Observation dataclasses
-
-        # pygame setup
-        self.screen = pygame.display.set_mode(
-            (SCREEN_WIDTH, SCREEN_HEIGHT), 0, 32)
-        pygame.display.set_caption('Box Dynamics')
-        self.clock = pygame.time.Clock()
-        pygame.font.init()  # to render text
 
         # adding world borders
         self.__create_borders()
@@ -239,9 +188,6 @@ class BoxEnv(gym.Env):
         # b2PolygonShape.draw = self.__draw_polygon
 
         self.prev_state = None
-
-        self.screen_infos = list()
-        self.design_shapes = list()
 
     def reset(self):
         # resetting base class
@@ -260,16 +206,17 @@ class BoxEnv(gym.Env):
         self.__update_agent_head()
         self.action = b2Vec2(0, 0)
 
-        if action is not None:
+        if self.manual_mode:
+            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            self.action = self.__world_coord(
+                mouse_pos) - self.agent_body.position
+        elif action is not None:
             # calculating where to apply force
             # target -> "head" of agent
             self.action = b2Vec2(action[1] *
                                  math.cos(action[0] + self.agent_body.angle),
                                  action[1] *
                                  math.sin(action[0] + self.agent_body.angle))
-
-        # can override action
-        done = self.__user_input()
 
         self.agent_body.ApplyForce(
             force=self.action, point=self.agent_head, wake=True)
@@ -285,145 +232,62 @@ class BoxEnv(gym.Env):
         assert self.state in self.observation_space
 
         # TODO: rewards and effects
-        self.__contact_effects()
 
         self.prev_state = self.state
 
         step_reward = 0
 
-        self.__get_screen_infos()
-
         self.render()
 
         info = {}
 
+        done = False
+
+        self.ui.user_input()
+
         return self.state, step_reward, done, info
 
-    def __contact_effects(self):
-        pass
-
     def render(self):
-        # background for render screen
-        self.screen.fill(BACK_COLOR)
+        self.ui.render()
 
-        # drawing bodies based on their level
-        self.__draw_bodies(BodyType)
-
-        # drawing agent actions
-        self.__draw_action()
-
-        # drawing agent observations
-        self.__draw_observations()
-
-        # drawing text distances
-        self.__draw_distances()
-
-        # last for a reason, drawing infos
-        self.__draw_simulation_infos()
-
-        pygame.display.flip()
-        self.clock.tick(TARGET_FPS)
-
-    def __destroy(self):
+    def destroy(self):
         for body in self.world.bodies:
             self.world.DestroyBody(body)
-        pygame.quit()
-
-    def box_design(self):
-        first_set = False
-        second_set = False
-
-        box = DesignShapeData()
-
-        box.points = [b2Vec2(0, 0) for _ in range(4)]
-        self.design_shapes.append(box)
-
-        while not (first_set and second_set):
-            # drawing borders and info box
-            self.__render_design()
-
-            mouse_pos = b2Vec2(pygame.mouse.get_pos())
-
-            for event in pygame.event.get():
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if first_set:
-                        second_set = True
-                        end_pos = mouse_pos
-                    else:
-                        first_set = True
-                        start_pos = mouse_pos
-
-            self.design_shapes.remove(box)
-            # only update box from here
-
-            if first_set:
-                box.points[0] = start_pos
-                box.points[1] = b2Vec2(mouse_pos.x, start_pos.y)
-                box.points[2] = mouse_pos
-                box.points[3] = b2Vec2(start_pos.x, mouse_pos.y)
-            if first_set and second_set:
-                box.points[0] = start_pos
-                box.points[1] = b2Vec2(end_pos.x, start_pos.y)
-                box.points[2] = end_pos
-                box.points[3] = b2Vec2(start_pos.x, end_pos.y)
-
-            # only update box until here
-            self.design_shapes.append(box)
-
-            sleep(DESIGN_SLEEP)
+        self.ui.quit()
 
     def world_design(self):
-        circle_mode = False
+        self.ui.set_mode(Mode.WORLD_DESIGN)
+        while self.ui.mode != Mode.SIMULATION:
+            self.ui.user_input()
+            self.ui.ui_sleep()
+            self.render()
+        self.__create_from_design_data()
 
-        finished = False
+    def __create_from_design_data(self):
+        for design in self.ui.design_bodies:
+            points = self.get_vertices(design.points[0], design.points[1])
 
-        while not finished:
-            # drawing borders, infos and currently designed shapes
-            self.__render_design()
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT or \
-                        (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                    # The user closed the window or pressed escape
-                    self.__destroy()
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                    self.box_design()
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_c:
-                    circle_mode = True
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
-                    finished = True
-
-            sleep(DESIGN_SLEEP)
-        
-        self.__create_from_design_shapes()
-        pass
-
-    def __create_from_design_shapes(self):
-        for shape in self.design_shapes:
-            points = shape.points
-
-            pos = b2Vec2(points[0].x + (points[1].x - points[0].x) / 2, points[0].y + (points[3].y - points[0].y) / 2)
-            size = b2Vec2(abs(points[1].x - points[0].x) / 2, abs(points[3].y - points[0].y) / 2)
+            pos = b2Vec2(points[0].x + (points[1].x - points[0].x) / 2,
+                         points[0].y + (points[3].y - points[0].y) / 2)
+            size = b2Vec2(abs(points[1].x - points[0].x) / 2,
+                          abs(points[3].y - points[0].y) / 2)
 
             pos = self.__world_coord(pos)
             size = size / PPM
-            self.create_static_obstacle(pos, size)
+            # TODO: add color
+            self.__create_body(pos, size, design.type, design.angle)
 
-    def __user_input(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or \
-                    (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                # The user closed the window or pressed escape
-                self.__destroy()
-                return True
-            # TODO: add commands description
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                self.manual_mode = not self.manual_mode
-        if self.manual_mode:
-            mouse_pos = b2Vec2(pygame.mouse.get_pos())
-            self.action = self.__world_coord(
-                mouse_pos) - self.agent_body.position
-        return False
+        self.ui.design_bodies.clear()
+
+    def __create_body(self, pos, size, type, angle=0):
+        if type == BodyType.STATIC_OBSTACLE:
+            self.create_static_obstacle(pos, size, angle=angle)
+        elif type == BodyType.MOVING_OBSTACLE:
+            self.create_moving_obstacle(pos, size, angle=angle)
+        elif type == BodyType.STATIC_ZONE:
+            self.create_static_zone(pos, size, angle=angle)
+        elif type == BodyType.MOVING_ZONE:
+            self.create_moving_zone(pos, size, angle=angle)
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key
@@ -450,10 +314,10 @@ class BoxEnv(gym.Env):
             elif key == "velocity_mag":
                 partial_dict = ({"velocity_mag": gym.spaces.Box(
                     low=0, high=np.inf, shape=(1,))})
-            elif key == "inside_zone":
-                # partial_dict = ({"inside_zone": gym.spaces.Tuple(
+            elif key == "contacts":
+                # partial_dict = ({"contacts": gym.spaces.Tuple(
                 #     ([gym.spaces.Discrete(2)] * ZONES_NUM))})
-                partial_dict = ({"inside_zone": gym.spaces.Discrete(2)})
+                partial_dict = ({"contacts": gym.spaces.Discrete(2)})
 
             observation_dict.update(partial_dict)
 
@@ -495,8 +359,8 @@ class BoxEnv(gym.Env):
             elif key == "velocity_mag":
                 state["velocity_mag"] = np.array(
                     [self.agent_body.linearVelocity.length], dtype=np.float32)
-            elif key == "inside_zone":
-                state["inside_zone"] = False
+            elif key == "contacts":
+                state["contacts"] = False
 
         return state
 
@@ -523,8 +387,7 @@ class BoxEnv(gym.Env):
                 observation.valid = True
                 if hasattr(callback, "point"):
                     observation.intersection = callback.point
-                    observation.distance = self.__euclidean_distance(
-                        self.agent_head, callback.point)
+                    observation.distance = (self.agent_head - callback.point).length
                 else:
                     observation.valid = False
 
@@ -539,20 +402,6 @@ class BoxEnv(gym.Env):
         state = self.__set_observation_dict()
 
         return state
-
-    def __get_screen_infos(self):
-        self.screen_infos.clear()
-
-        self.screen_infos.append({"name": "agent position", "value": (
-            round(self.agent_body.position.x, 1), round(self.agent_body.position.y, 1))})
-        self.screen_infos.append({"name": "agent velocity magnitude", "value": round(
-            self.agent_body.linearVelocity.length, 1)})
-        self.screen_infos.append(
-            {"name": "agent angular velocity", "value": round(self.agent_body.angularVelocity, 1)})
-
-        for cix, agent_contact in enumerate(self.agent_body.userData.contact_bodies):
-            self.screen_infos.append({"name": "contact {}".format(
-                cix), "value": agent_contact.userData.type})
 
     def __update_agent_head(self):
         # TODO: define agent head types and let the user choose
@@ -572,44 +421,80 @@ class BoxEnv(gym.Env):
             return self.agent_body.angle
 
     def __create_borders(self):
-        inside = 0.5  # defines how much of the borders are visible
+        inside = 0.0  # defines how much of the borders are visible
 
-        # TODO: add fixtures (?)
+        # TODO: border reward
 
+        pos = b2Vec2(self.world_width / 2, inside - (BOUNDARIES_WIDTH / 2))
         self.bottom_border = self.world.CreateStaticBody(
-            position=(WORLD_WIDTH / 2, inside -
-                      (BOUNDARIES_WIDTH / 2) + INFO_HEIGHT / PPM),
+            position=pos,
             shapes=b2PolygonShape(
-                box=(WORLD_WIDTH / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
-            userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, level=1)
+                box=(self.world_width / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
+            userData=self.get_border_data()
         )
 
+        pos = b2Vec2(self.world_width / 2, self.world_height - inside + (BOUNDARIES_WIDTH / 2))
         self.top_border = self.world.CreateStaticBody(
-            position=(WORLD_WIDTH / 2, WORLD_HEIGHT + (INFO_HEIGHT / PPM) -
-                      inside + (BOUNDARIES_WIDTH / 2)),
+            position=pos,
             shapes=b2PolygonShape(
-                box=(WORLD_WIDTH / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
-            userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, level=1)
+                box=(self.world_width / 2 + BOUNDARIES_WIDTH, BOUNDARIES_WIDTH / 2)),
+            userData=self.get_border_data()
         )
 
+        pos = b2Vec2(inside - (BOUNDARIES_WIDTH / 2), self.world_height / 2)
         self.left_border = self.world.CreateStaticBody(
-            position=(inside - (BOUNDARIES_WIDTH / 2),
-                      WORLD_HEIGHT / 2 + (INFO_HEIGHT / PPM)),
+            position=pos,
             shapes=b2PolygonShape(
-                box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2 + BOUNDARIES_WIDTH)),
-            userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, level=1)
+                box=(BOUNDARIES_WIDTH / 2, self.world_height / 2 + BOUNDARIES_WIDTH)),
+            userData=self.get_border_data()
         )
+
+        pos = b2Vec2(self.world_width - inside + (BOUNDARIES_WIDTH / 2), self.world_height / 2)
         self.right_border = self.world.CreateStaticBody(
-            position=(WORLD_WIDTH - inside +
-                      (BOUNDARIES_WIDTH / 2), WORLD_HEIGHT / 2 + (INFO_HEIGHT / PPM)),
+            position=pos,
             shapes=b2PolygonShape(
-                box=(BOUNDARIES_WIDTH / 2, WORLD_HEIGHT / 2 + BOUNDARIES_WIDTH)),
-            userData=BodyData(type=BodyType.BORDER,
-                              color=BORDER_COLOR, level=1)
+                box=(BOUNDARIES_WIDTH / 2, self.world_height / 2 + BOUNDARIES_WIDTH)),
+            userData=self.get_border_data()
         )
+
+    def get_data(self, type: BodyType):
+        if type == BodyType.BORDER:
+            return self.get_border_data()
+        elif type == BodyType.AGENT:
+            return self.get_agent_data()
+        elif type == BodyType.STATIC_OBSTACLE:
+            return self.get_static_obstacle_data()
+        elif type == BodyType.MOVING_OBSTACLE:
+            return self.get_moving_obstacle_data()
+        elif type == BodyType.STATIC_ZONE:
+            return self.get_static_zone_data()
+        elif type == BodyType.MOVING_ZONE:
+            return self.get_moving_zone_data()
+        else:
+            # TODO: explain
+            print(type)
+            assert False
+
+    def get_border_data(self):
+        return BodyData(type=BodyType.BORDER, color=color.BORDER)
+
+    def get_agent_data(self):
+        return BodyData(type=BodyType.AGENT, color=color.AGENT, level=np.inf)
+
+    def get_static_obstacle_data(self):
+        return BodyData(type=BodyType.STATIC_OBSTACLE, color=color.STATIC_OBSTACLE)
+    
+    def get_moving_obstacle_data(self):
+        return BodyData(
+            type=BodyType.MOVING_OBSTACLE, color=color.MOVING_OBSTACLE)
+
+    def get_static_zone_data(self):
+        return BodyData(
+            type=BodyType.STATIC_ZONE, color=color.STATIC_ZONE)
+
+    def get_moving_zone_data(self):
+        return BodyData(
+            type=BodyType.MOVING_ZONE, color=color.MOVING_ZONE)
 
     def __create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
         agent_width, agent_height = agent_size
@@ -619,9 +504,9 @@ class BoxEnv(gym.Env):
         if agent_pos is None:
             r = self.agent_size.length
             try:
-                x = random.randint(int(r), int(WORLD_WIDTH - r))
-                y = random.randint(int(r + (INFO_HEIGHT / PPM)),
-                                   int(WORLD_HEIGHT + (INFO_HEIGHT / PPM) - r))
+                x = random.randint(int(r), int(self.world_width - r))
+                y = random.randint(int(r),
+                                   int(self.world_height - r))
             except ValueError:
                 assert False and "There is no space to spawn the agent, modify world sizes"
             agent_pos = b2Vec2(x, y)
@@ -637,12 +522,12 @@ class BoxEnv(gym.Env):
         self.agent_fix = self.agent_body.CreatePolygonFixture(
             box=(agent_width, agent_height), density=AGENT_MASS/area)
 
-        self.agent_body.userData = BodyData(
-            type=BodyType.AGENT, color=AGENT_COLOR, level=0)
+        self.agent_body.userData = self.get_agent_data()
 
         self.agent_fix.body.angularDamping = AGENT_ANGULAR_DAMPING
         self.agent_fix.body.linearDamping = AGENT_LINEAR_DAMPING
 
+    # TODO: support colors, circles
     def create_static_obstacle(self, pos, size, angle=0, reward=-1, level=3):
         body = self.world.CreateStaticBody(
             position=pos, angle=angle
@@ -650,20 +535,20 @@ class BoxEnv(gym.Env):
         fixture = body.CreatePolygonFixture(
             box=size)
 
-        body.userData = BodyData(
-            type=BodyType.STATIC_OBSTACLE, color=STATIC_OBSTACLE_COLOR,
-            reward=reward, level=level)
+        body.userData = self.get_static_obstacle_data()
+        body.userData.reward = reward
+        body.userData.level = level
 
-    def create_moving_obstacle(self, pos, size, velocity, angle=0, reward=-2, level=2):
+    def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=-2, level=2):
         body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False, )
         _ = body.CreatePolygonFixture(
             box=size, density=MOVING_OBSTACLE_DENSITY)
 
-        body.userData = BodyData(
-            type=BodyType.MOVING_OBSTACLE, color=MOVING_OBSTACLE_COLOR,
-            reward=reward, level=level)
+        body.userData = self.get_moving_obstacle_data()
+        body.userData.reward = reward
+        body.userData.level = level
 
     def create_static_zone(self, pos, size, angle=0, reward=1, level=3):
         body = self.world.CreateStaticBody(
@@ -673,10 +558,12 @@ class BoxEnv(gym.Env):
         fixture.sensor = True
 
         body.userData = BodyData(
-            type=BodyType.STATIC_ZONE, color=STATIC_ZONE_COLOR,
+            type=BodyType.STATIC_ZONE, color=color.STATIC_ZONE,
             reward=reward, level=level)
+        body.userData.reward = reward
+        body.userData.level = level
 
-    def create_moving_zone(self, pos, size, velocity, angle=0, reward=2, level=1):
+    def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=2, level=1):
         body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False)
@@ -685,150 +572,25 @@ class BoxEnv(gym.Env):
 
         fixture.sensor = True
 
-        body.userData = BodyData(
-            type=BodyType.MOVING_ZONE, color=MOVING_ZONE_COLOR,
-            reward=reward, level=level)
+        body.userData = self.get_moving_zone_data()
+        body.userData.reward = reward
+        body.userData.level = level
 
     # user functions
     def get_world_size(self):
-        return WORLD_WIDTH, WORLD_HEIGHT
+        return self.world_width, self.world_height
 
-    # render functions
-    def __render_design(self):
-        # draws borders, design infos and currently designed shapes
-
-        self.screen.fill(BACK_COLOR)
-        self.__draw_bodies([BodyType.BORDER])
-        self.__draw_design_infos()
-        self.__draw_design_shapes()
-        pygame.display.flip()
-
-    def __draw_design_shapes(self):
-        for shape in self.design_shapes:
-            pygame.draw.polygon(self.screen, COLOR_GREEN, shape.points)
-
-    def __draw_bodies(self, types):
-        # Draw the world based on bodies levels
-        bodies_levels = [[b, b.userData.level]
-                         for b in self.world.bodies]
-        bodies_levels.sort(key=lambda x: x[1], reverse=True)
-
-        for body, level in bodies_levels:
-            if body.userData.type in types:
-                for fixture in body.fixtures:
-                    vertices = [self.__pygame_coord(body.transform * v) for v in fixture.shape.vertices]
-                    pygame.draw.polygon(self.screen, body.userData.color, vertices)
-        pass
-
-    def __draw_action(self):
-        action_start = self.__pygame_coord(self.agent_head)
-        action_end = self.__pygame_coord(self.agent_head + self.action)
-
-        pygame.draw.line(self.screen, ACTION_COLOR, action_start, action_end)
-
-    def __draw_distances(self):
-        text_font = pygame.font.SysFont('Comic Sans MS', 16)
-
-        # drawing distance text
-        # TODO: only draw them if there is enough space
-        freq = 1  # defines "distance text" quantity
-        for oix, observation in enumerate(self.data):
-            if oix % freq == 0 and observation.valid:
-                distance = round(observation.distance, 1)
-
-                text_point = self.__pygame_coord(
-                    self.agent_head + (observation.intersection - self.agent_head) / 2)
-                text_surface = text_font.render(
-                    str(distance), False, COLOR_BLACK, COLOR_WHITE)
-                self.screen.blit(text_surface, text_point)
-
-    def __draw_observations(self):
-        start_point = self.__pygame_coord(self.agent_head)
-        for observation in self.data:
-            if observation.valid:
-                end_point = self.__pygame_coord(observation.intersection)
-
-                # drawing observation vectors
-                pygame.draw.line(self.screen, observation.body.userData.color,
-                                 start_point, end_point)
-                # drawing intersection points
-                pygame.draw.circle(
-                    self.screen, INTERSECTION_COLOR, end_point, 3)
-
-    def __draw_infos_box(self):
-        info_vertices = [(0, SCREEN_HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT), (
-            SCREEN_WIDTH, SCREEN_HEIGHT - INFO_HEIGHT), (0, SCREEN_HEIGHT - INFO_HEIGHT)]
-        pygame.draw.polygon(self.screen, INFO_BACK_COLOR, info_vertices)
-
-    def __draw_design_infos(self):
-        self.__draw_infos_box()
-
-        text_font = pygame.font.SysFont('Comic Sans MS', INFO_FONT_SIZE)
-
-        shapes = [{"key": "R", "description": "create rectangle"}, {"key": "C", "description": "create circle"}]
-
-        max_len = 0
-        for six, shape in enumerate(shapes):
-            s = "{}: {}".format(shape["key"], shape["description"])
-            text_surface = text_font.render(s, True, COLOR_BLACK, COLOR_WHITE)
-
-            pos, max_len = self.__get_info_pos(six, len(s), max_len)
-            self.screen.blit(text_surface, pos)
-
-    def __draw_simulation_infos(self):
-        self.__draw_infos_box()
-
-        text_font = pygame.font.SysFont('Comic Sans MS', INFO_FONT_SIZE)
-
-        # fps
-        fps = round(self.clock.get_fps())
-        fps_point = (0, 0)
-        fps_color = COLOR_GREEN if abs(fps - TARGET_FPS) < 10 else COLOR_RED
-        text_surface = text_font.render(
-            str(fps), True, COLOR_BLACK, fps_color)
-        self.screen.blit(text_surface, fps_point)
-
-        max_len = 0
-        for iix, info in enumerate(self.screen_infos):
-            info_str = "> {}: {}".format(info["name"], info["value"])
-            text_surface = text_font.render(
-                info_str, True, COLOR_BLACK, COLOR_WHITE
-            )
-
-            pos, max_len = self.__get_info_pos(iix, len(info_str), max_len)
-
-            self.screen.blit(text_surface, pos)
-
-    def __get_info_pos(self, str_ix, str_len, max_str_len):
-        border = 10  # info border pixels
-        # first info coordinate
-        info_coord = b2Vec2(border, SCREEN_HEIGHT - INFO_HEIGHT + border)
-        y_space = INFO_HEIGHT - border*2  # available vertical space
-        y_inc = 20  # vertical space between infos
-        x_inc = 0
-        y_slots = y_space / y_inc
-
-        pos_inc = b2Vec2(x_inc, (str_ix % y_slots)*y_inc)
-        pos = info_coord + pos_inc
-
-        if str_len > max_str_len:
-            max_str_len = str_len
-        if (str_ix + 1) % y_slots == 0:
-            x_inc += max_str_len * 7
-            max_str_len = 0
-        if x_inc + max_str_len > SCREEN_WIDTH:
-            warnings.warn(
-                "Some infos are not visible, increase INFO_HEIGHT")
-
-        return pos, max_str_len
-
-    # transform point in world coordinates to point in pygame coordinates
-    def __pygame_coord(self, point):
-        return b2Vec2(point.x * PPM, SCREEN_HEIGHT - (point.y * PPM))
+    # # transform point in world coordinates to point in pygame coordinates
+    # def __pygame_coord(self, point):
+    #     return b2Vec2(point.x * PPM, self.screen_height - (point.y * PPM))
 
     def __world_coord(self, point):
-        return b2Vec2(point.x / PPM, (SCREEN_HEIGHT - point.y) / PPM)
+        return b2Vec2(point.x / PPM, (self.screen_height - point.y) / PPM) - self.world_pos
 
-    # utilities functions
-    def __euclidean_distance(self, point1, point2):
-        return (point1 - point2).length
+    def get_vertices(self, p1: b2Vec2, p2: b2Vec2):
+        vertices = list()
+        vertices.append(p1)
+        vertices.append(b2Vec2(p2.x, p1.y))
+        vertices.append(p2)
+        vertices.append(b2Vec2(p1.x, p2.y))
+        return vertices
