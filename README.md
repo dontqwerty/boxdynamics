@@ -8,14 +8,14 @@ __boxenv__ is a tool for the training of RL agents. It allows you to create a co
 
         git clone https://github.com/dontqwerty/boxenv.git
 
-- Naviagate inside repository folder
-
-        cd boxenv
-
 - Create and activate a virtual enviroment (optional)
 
         python3 -m venv env
         source env/bin/activate
+
+- Naviagate inside repository folder
+
+        cd boxenv
 
 - Install requirements
 
