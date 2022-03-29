@@ -11,7 +11,7 @@ import pygame
 from Box2D import b2Vec2
 
 import boxcolors as color
-from boxdata import BodyShape, BodyType
+from boxdef import BodyShape, BodyType
 from boxutils import get_intersection, get_line_eq_angle
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world

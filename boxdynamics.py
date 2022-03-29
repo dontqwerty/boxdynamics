@@ -11,7 +11,7 @@ from Box2D import (b2Body, b2Contact, b2ContactListener, b2Fixture,
                    b2PolygonShape, b2RayCastCallback, b2Vec2, b2World)
 
 import boxcolors as color
-from boxdata import BodyShape, BodyType
+from boxdef import BodyShape, BodyType
 from boxui import BoxUI, Mode, ScreenLayout
 from boxutils import get_line_eq
 
