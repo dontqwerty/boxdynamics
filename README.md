@@ -1,4 +1,8 @@
 # boxenv
+
+## Description
+__boxenv__ is a tool for the training of RL agents. It allows you to create a continuous 2D enviroment in which the agent can move and collect rewards.
+
 ## Installation
 - Clone repository
 
