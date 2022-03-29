@@ -1,19 +1,18 @@
 import math
 import random
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List
+
+import gym
+import numpy as np
+import pygame
+from Box2D import (b2Body, b2ContactListener, b2PolygonShape,
+                   b2RayCastCallback, b2Vec2, b2World)
 
 import boxcolors as color
 from boxdata import BodyShape, BodyType
-from boxui import ScreenLayout, BoxUI, Mode
-
-from enum import Enum
-from dataclasses import dataclass, field
-from time import sleep
-from typing import List
-import warnings
-import numpy as np
-import gym
-import pygame
-from Box2D import b2Vec2, b2World, b2Body, b2PolygonShape, b2ContactListener, b2RayCastCallback
+from boxui import BoxUI, Mode, ScreenLayout
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
@@ -75,6 +74,7 @@ class Observation:
     intersection: b2Vec2 = (np.inf, np.inf)
     distance: float = np.inf
     body: b2Body = None
+
 
 class ContactListener(b2ContactListener):
     def __init__(self):
@@ -172,7 +172,8 @@ class BoxEnv(gym.Env):
 
         self.world_width = self.screen_layout.simulation_size.x / PPM
         self.world_height = self.screen_layout.simulation_size.y / PPM
-        self.world_pos = b2Vec2(self.screen_layout.simulation_pos.x, self.screen_height - self.screen_layout.simulation_pos.y) / PPM - b2Vec2(0, self.world_height)
+        self.world_pos = b2Vec2(self.screen_layout.simulation_pos.x, self.screen_height -
+                                self.screen_layout.simulation_pos.y) / PPM - b2Vec2(0, self.world_height)
 
         # it's like the observation space but with more informations
         self.data = list()  # list of Observation dataclasses
@@ -387,7 +388,8 @@ class BoxEnv(gym.Env):
                 observation.valid = True
                 if hasattr(callback, "point"):
                     observation.intersection = callback.point
-                    observation.distance = (self.agent_head - callback.point).length
+                    observation.distance = (
+                        self.agent_head - callback.point).length
                 else:
                     observation.valid = False
 
@@ -433,7 +435,8 @@ class BoxEnv(gym.Env):
             userData=self.get_border_data()
         )
 
-        pos = b2Vec2(self.world_width / 2, self.world_height - inside + (BOUNDARIES_WIDTH / 2))
+        pos = b2Vec2(self.world_width / 2, self.world_height -
+                     inside + (BOUNDARIES_WIDTH / 2))
         self.top_border = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
@@ -449,7 +452,8 @@ class BoxEnv(gym.Env):
             userData=self.get_border_data()
         )
 
-        pos = b2Vec2(self.world_width - inside + (BOUNDARIES_WIDTH / 2), self.world_height / 2)
+        pos = b2Vec2(self.world_width - inside +
+                     (BOUNDARIES_WIDTH / 2), self.world_height / 2)
         self.right_border = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
@@ -483,7 +487,7 @@ class BoxEnv(gym.Env):
 
     def get_static_obstacle_data(self):
         return BodyData(type=BodyType.STATIC_OBSTACLE, color=color.STATIC_OBSTACLE)
-    
+
     def get_moving_obstacle_data(self):
         return BodyData(
             type=BodyType.MOVING_OBSTACLE, color=color.MOVING_OBSTACLE)

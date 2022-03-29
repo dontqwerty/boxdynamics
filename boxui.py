@@ -1,17 +1,17 @@
 
-from logging import debug
-from enum import Enum
-from dataclasses import dataclass, field
 import logging
 import math
+from dataclasses import dataclass, field
+from enum import Enum
+from logging import debug
 from time import sleep
 from typing import List
 
+import pygame
+from Box2D import b2Vec2
+
 import boxcolors as color
 from boxdata import BodyShape, BodyType
-
-from Box2D import b2Vec2
-import pygame
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
