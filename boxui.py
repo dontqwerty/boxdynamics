@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 from logging import debug
+from multiprocessing.sharedctypes import Value
 from time import sleep
 from typing import List
 
@@ -49,8 +50,8 @@ class DesignData:
     rotated = False
     alpha: float = 0
     beta: float = 0
-    gamma: float = 0
     angle: float = 0
+    gamma: float = 0
     mouse_radius: float = None
     rotating: bool = False  # used to rotate the object
     type: Enum = BodyType.STATIC_OBSTACLE
@@ -262,14 +263,12 @@ class BoxUI():
                                         math.atan(delta_y / delta_x)
                                     pass
 
-                                # self.design_data.beta += (self.design_data.alpha - self.design_data.angle)
-                                # self.design_data.gamma += (self.design_data.alpha - self.design_data.angle)
-
 
                             # TODO: second round of rotating
-                            # if self.design_data.mouse_radius is None:
-                            #     self.design_data.mouse_radius = (
-                            #         self.design_data.points[0] - mouse_pos).length
+                            if self.design_data.mouse_radius is None:
+                                self.design_data.angle = self.design_data.alpha
+                                self.design_data.mouse_radius = (
+                                    self.design_data.points[0] - mouse_pos).length
 
                             mouse_pos = self.design_data.points[0] + b2Vec2(math.cos(self.design_data.alpha), math.sin(
                                 self.design_data.alpha)) * self.design_data.mouse_radius
@@ -347,16 +346,19 @@ class BoxUI():
 
     def render_design(self, types=BodyType):
         # Draw the world based on bodies levels
-        bodies_levels = [[b, b.level]
+        bodies_levels: List[tuple(DesignData, int)] = [[b, b.level]
                          for b in self.design_bodies]
         bodies_levels.sort(key=lambda x: x[1], reverse=False)
 
         for body, _ in bodies_levels:
             if body.type in types:
                 if body.shape == BodyShape.BOX:
-                    vertices = self.get_vertices(body)
-                    pygame.draw.polygon(
-                        self.screen, body.color, vertices)
+                    try:
+                        pygame.draw.polygon(
+                            self.screen, body.color, body.vertices)
+                    except ValueError:
+                        # wait another cycle for the vertices to be there
+                        pass
                 elif body.shape == BodyShape.CIRCLE:
                     radius = (body.points[0] - body.points[1]).length
                     pygame.draw.circle(
