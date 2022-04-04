@@ -13,11 +13,11 @@ from Box2D import (b2Body, b2Contact, b2ContactListener, b2Fixture,
 import boxcolors as color
 from boxdef import BodyShape, BodyType
 from boxui import BoxUI, DesignData, Mode, ScreenLayout
-from boxutils import get_line_eq, get_intersection
+from boxutils import get_intersection, get_line_eq
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
-PPM = 10  # pixel per meter
+PPM = 8  # pixel per meter
 
 # world
 BOUNDARIES_WIDTH = 10  # meters
@@ -35,11 +35,11 @@ MAX_ANGLE = math.pi * 3 / 4
 # MAX_ANGLE = 2*math.pi
 
 MIN_FORCE = 0  # newtons
-MAX_FORCE = 10
+MAX_FORCE = 8
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
-OBSERVATION_MAX_DISTANCE = 2000  # how far can the agent see
+OBSERVATION_MAX_DISTANCE = 1000  # how far can the agent see
 OBSERVATION_NUM = 10  # number of distance vectors
 
 # agent frictions
@@ -289,6 +289,7 @@ class BoxEnv(gym.Env):
             body = self.create_static_obstacle(pos, size, angle=angle)
         elif type == BodyType.MOVING_OBSTACLE:
             body = self.create_moving_obstacle(pos, size, angle=angle)
+            # TODO: function instead
             body.angularDamping = design_data.physics["ang_damping"]
             body.angularVelocity = design_data.physics["ang_velocity"]
             body.linearDamping = design_data.physics["lin_damping"]
@@ -300,6 +301,7 @@ class BoxEnv(gym.Env):
             body = self.create_static_zone(pos, size, angle=angle)
         elif type == BodyType.MOVING_ZONE:
             body = self.create_moving_zone(pos, size, angle=angle)
+            # TODO: function instead
             body.angularDamping = design_data.physics["ang_damping"]
             body.angularVelocity = design_data.physics["ang_velocity"]
             body.linearDamping = design_data.physics["lin_damping"]

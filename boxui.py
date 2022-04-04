@@ -1,5 +1,4 @@
 
-import enum
 import logging
 import math
 from dataclasses import dataclass, field
@@ -23,7 +22,7 @@ DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
 class Mode(Enum):
     NONE = 0
-    WORLD_DESIGN = 1  # create box, circle, save, use
+    WORLD_DESIGN = 1
     SIMULATION = 2
     SET_REWARD = 3
     SET_LEVEL = 4
@@ -37,14 +36,14 @@ class ScreenLayout:
     height: int = 800
     size: b2Vec2 = b2Vec2(width, height)
     simulation_xshift = 200
-    simulation_yshift = 16
+    simulation_yshift = 0
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
-    simulation_size: b2Vec2 = b2Vec2(600, 600)
+    simulation_size: b2Vec2 = b2Vec2(600, height - simulation_yshift)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
     board_size: b2Vec2 = b2Vec2(width, height) * 0
     small_font: int = 14
     normal_font: int = 20
-    big_font: int = 24
+    big_font: int = 32
 
 
 @dataclass
@@ -70,13 +69,13 @@ class DesignData:
 
     # physics
     physics = {"lin_velocity": 0.0,
-            "lin_velocity_angle": 0.0,
-            "ang_velocity": 0.0,
-            "friction": 0.0,
-            "density": 1.0,
-            "inertia": 0.0,
-            "lin_damping": 0.0,
-            "ang_damping": 0.0}
+               "lin_velocity_angle": 0.0,
+               "ang_velocity": 0.0,
+               "friction": 0.0,
+               "density": 1.0,
+               "inertia": 0.0,
+               "lin_damping": 0.0,
+               "ang_damping": 0.0}
     # indicates which param to currently change
     physics_param_ix = 0
     float_inc: float = 0.1
@@ -105,6 +104,14 @@ class BoxUI():
         pygame.display.set_caption('Box Dynamics')
         self.clock = pygame.time.Clock()
         pygame.font.init()  # to render text
+
+        # border when drawing rectangles that contain text
+        self.border_width = 10
+
+        # will be updated on runtime based on the real dimensions
+        self.title_surface_height = 0
+        self.design_surface_height = 0
+        self.commands_surface_height = 0
 
         logging.basicConfig(level=logging.DEBUG)
         debug("BoxUI created")
@@ -139,6 +146,18 @@ class BoxUI():
 
         self.render_world()
 
+        # title
+        text_font = pygame.font.SysFont(
+            'Comic Sans MS', self.layout.big_font)
+        s = "{}".format(self.mode.name)
+        text_surface = text_font.render(
+            s, True, color.BLACK, color.GREEN)
+        self.title_surface_height = text_surface.get_height()
+        pos = b2Vec2(0, 0)
+        self.screen.blit(text_surface, pos)
+
+        self.render_commands()
+
         if self.mode == Mode.SIMULATION:
             self.render_action()
             self.render_observations()
@@ -147,17 +166,6 @@ class BoxUI():
         elif self.mode != Mode.SIMULATION and self.mode != Mode.NONE:
             self.render_design()
 
-        self.render_commands()
-
-        # title
-        text_font = pygame.font.SysFont(
-            'Comic Sans MS', self.layout.big_font)
-        s = str(self.mode)
-        text_surface = text_font.render(
-            s, True, color.BLACK, color.WHITE)
-        pos = b2Vec2((self.layout.width - text_surface.get_width()) / 2, 0)
-        # print(text_surface.get_height())
-        self.screen.blit(text_surface, pos)
 
         pygame.display.flip()
         self.clock.tick(self.target_fps)
@@ -213,11 +221,13 @@ class BoxUI():
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_a:
                     # angle
                     points_num = len(self.design_data.points)
-                    if points_num == 2:
+                    if points_num == 2 and self.design_data.shape == BodyShape.BOX:
                         self.design_data.rotation_begin = True
                         self.set_mode(Mode.ROTATE)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                    self.set_mode(Mode.SET_PHYSICS)
+                    if self.design_data.type == BodyType.MOVING_OBSTACLE or \
+                            self.design_data.type == BodyType.MOVING_ZONE:
+                        self.set_mode(Mode.SET_PHYSICS)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # TODO: check for mouse pos and perform action like select bodies
                     points_num = len(self.design_data.points)
@@ -337,15 +347,18 @@ class BoxUI():
                     self.set_mode(Mode.WORLD_DESIGN)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                     # toggle physics parameter to change
-                    self.design_data.physics_param_ix = (self.design_data.physics_param_ix + 1) % len(list(self.design_data.physics))
+                    self.design_data.physics_param_ix = (
+                        self.design_data.physics_param_ix + 1) % len(list(self.design_data.physics))
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
                     # increase reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] += self.design_data.float_inc
+                    self.design_data.physics[list(self.design_data.physics)[
+                        self.design_data.physics_param_ix]] += self.design_data.float_inc
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
                     # decrease reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] -= self.design_data.float_inc
+                    self.design_data.physics[list(self.design_data.physics)[
+                        self.design_data.physics_param_ix]] -= self.design_data.float_inc
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
                     # increase inc by factor 10
@@ -428,26 +441,26 @@ class BoxUI():
                     (self.layout.simulation_xshift, 0),
                     (self.layout.simulation_xshift, self.layout.height),
                     (0, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.GREY, vertices)
+        pygame.draw.polygon(self.screen, color.WHITE, vertices)
 
         vertices = [(0, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.simulation_yshift),
                     (0, self.layout.simulation_yshift)]
-        pygame.draw.polygon(self.screen, color.GREY, vertices)
+        pygame.draw.polygon(self.screen, color.WHITE, vertices)
 
         vertices = [(self.layout.simulation_pos.x + self.layout.simulation_size.x, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.height),
                     (self.layout.simulation_pos.x + self.layout.simulation_size.x, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.GREY, vertices)
+        pygame.draw.polygon(self.screen, color.WHITE, vertices)
 
         vertices = [(0, self.layout.simulation_pos.y + self.layout.simulation_size.y),
                     (self.layout.width, self.layout.simulation_pos.y +
                      self.layout.simulation_size.y),
                     (self.layout.width, self.layout.height),
                     (0, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.GREY, vertices)
+        pygame.draw.polygon(self.screen, color.WHITE, vertices)
 
     def render_design(self, types=BodyType):
         # Draw the world based on bodies levels
@@ -476,12 +489,22 @@ class BoxUI():
         text_font = pygame.font.SysFont(
             'Comic Sans MS', self.layout.big_font)
 
-        pos = b2Vec2(0, self.layout.height / 2)
+        design_pos = b2Vec2(0, self.commands_surface_height + self.border_width * 3)
+        pos = design_pos.copy()
+
+        pygame.draw.rect(self.screen, color.YELLOW,
+                            pygame.Rect(pos.x, pos.y, self.layout.simulation_xshift, self.design_surface_height))
+        pygame.draw.rect(self.screen, color.BLACK,
+                            pygame.Rect(pos.x - self.border_width,
+                            pos.y,
+                            self.layout.simulation_xshift + self.border_width * 2,
+                            self.design_surface_height), width=self.border_width)
 
         # title
+        pos += b2Vec2(self.border_width, self.border_width)
         s = "DESIGN DATA"
         text_surface = text_font.render(
-            s, True, color.BLACK, color.WHITE)
+            s, True, color.BLACK, color.YELLOW)
         self.screen.blit(text_surface, pos)
 
         text_font = pygame.font.SysFont(
@@ -497,55 +520,76 @@ class BoxUI():
         for s in data:
             pos += b2Vec2(0, text_surface.get_height())
             text_surface = text_font.render(
-                s, True, color.BLACK, color.WHITE)
+                s, True, color.BLACK, color.YELLOW)
             self.screen.blit(text_surface, pos)
 
         if self.design_data.type == BodyType.MOVING_OBSTACLE or \
-            self.design_data.type == BodyType.MOVING_ZONE:
+                self.design_data.type == BodyType.MOVING_ZONE:
             physic_params = ["Velocity: {}".format(round(self.design_data.physics["lin_velocity"], 3)),
-                        "Velocity angle: {}".format(round(self.design_data.physics["lin_velocity_angle"], 3)),
-                        "Angular velocity: {}".format(round(self.design_data.physics["ang_velocity"], 3)),
-                        "Friction: {}".format(round(self.design_data.physics["friction"], 3)),
-                        "Density: {}".format(round(self.design_data.physics["density"], 3)),
-                        "Inertia: {}".format(round(self.design_data.physics["inertia"], 3)),
-                        "Linear damping: {}".format(round(self.design_data.physics["lin_damping"], 3)),
-                        "Angular damping: {}".format(round(self.design_data.physics["ang_damping"], 3))]
+                             "Velocity angle: {}".format(
+                                 round(self.design_data.physics["lin_velocity_angle"], 3)),
+                             "Angular velocity: {}".format(
+                                 round(self.design_data.physics["ang_velocity"], 3)),
+                             "Friction: {}".format(
+                                 round(self.design_data.physics["friction"], 3)),
+                             "Density: {}".format(
+                                 round(self.design_data.physics["density"], 3)),
+                             "Inertia: {}".format(
+                                 round(self.design_data.physics["inertia"], 3)),
+                             "Linear damping: {}".format(
+                                 round(self.design_data.physics["lin_damping"], 3)),
+                             "Angular damping: {}".format(round(self.design_data.physics["ang_damping"], 3))]
 
             for ix, s in enumerate(physic_params):
                 pos += b2Vec2(0, text_surface.get_height())
                 if ix == self.design_data.physics_param_ix:
-                    text_surface = text_font.render(s, True, color.BLACK, color.GREEN)
+                    text_surface = text_font.render(
+                        s, True, color.BLACK, color.GREEN)
                 else:
-                    text_surface = text_font.render(s, True, color.BLACK, color.WHITE)
+                    text_surface = text_font.render(
+                        s, True, color.BLACK, color.YELLOW)
                 self.screen.blit(text_surface, pos)
+        self.design_surface_height = pos.y - design_pos.y + self.border_width * 3
 
     def render_commands(self):
+        pos = b2Vec2(0, self.title_surface_height + self.border_width)
+        pygame.draw.rect(self.screen, color.YELLOW,
+                            pygame.Rect(pos.x, pos.y, self.layout.simulation_xshift, self.commands_surface_height))
+        pygame.draw.rect(self.screen, color.BLACK,
+                            pygame.Rect(pos.x - self.border_width,
+                                    pos.y,
+                                    self.layout.simulation_xshift + self.border_width * 2,
+                                    self.commands_surface_height), width=self.border_width)
+
         text_font = pygame.font.SysFont(
             'Comic Sans MS', self.layout.big_font)
-        pos = b2Vec2(0, self.layout.simulation_yshift)
 
         # title
+        pos += b2Vec2(self.border_width, self.border_width)
         text_surface = text_font.render(
-            "COMMANDS", True, color.BLACK, color.WHITE)
+            "COMMANDS", True, color.BLACK, color.YELLOW)
         self.screen.blit(text_surface, pos)
-
-        commands = list()
 
         text_font = pygame.font.SysFont(
             'Comic Sans MS', self.layout.normal_font)
 
+        commands = list()
         if self.mode == Mode.WORLD_DESIGN:
             commands = [{"key": "mouse click", "description": "fix point"},
                         {"key": "R", "description": "rectangle"},
                         {"key": "C", "description": "circle"},
                         {"key": "T", "description": "type"},
-                        {"key": "A", "description": "rotate"}, # TODO: only if rect shape
-                        {"key": "P", "description": "physics"},
                         {"key": "W", "description": "reward"},
                         {"key": "L", "description": "level"},
                         {"key": "U", "description": "use"},
                         {"key": "S", "description": "save"},
                         {"key": "ESC", "description": "exit"}]
+            if self.design_data.type == BodyType.MOVING_OBSTACLE or \
+                    self.design_data.type == BodyType.MOVING_ZONE:
+                commands.append({"key": "P", "description": "physics"})
+
+            if self.design_data.shape == BodyShape.BOX:
+                commands.append({"key": "A", "description": "rotate"})
         if self.mode == Mode.ROTATE:
             commands = [{"key": "A", "description": "finish rotating"},
                         {"key": "mouse movement", "description": "rotate"},
@@ -575,11 +619,14 @@ class BoxUI():
             commands = [{"key": "M", "description": "manual"},
                         {"key": "ESC", "description": "exit"}]
 
+        # pos += b2Vec2(self.border_width, self.border_width)
         for command in commands:
             pos += b2Vec2(0, text_surface.get_height())
-            s = "{}: {}".format(command["key"], command["description"])
-            text_surface = text_font.render(s, True, color.BACK, color.WHITE)
+            s = "- {}: {}".format(command["key"], command["description"])
+            text_surface = text_font.render(s, True, color.BACK, color.YELLOW)
             self.screen.blit(text_surface, pos)
+
+        self.commands_surface_height = pos.y
 
     def render_action(self):
         p1 = self.__pygame_coord(self.env.agent_head)
