@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class BodyType(Enum):
     AGENT = 0
     STATIC_OBSTACLE = 1

@@ -289,10 +289,24 @@ class BoxEnv(gym.Env):
             body = self.create_static_obstacle(pos, size, angle=angle)
         elif type == BodyType.MOVING_OBSTACLE:
             body = self.create_moving_obstacle(pos, size, angle=angle)
+            body.angularDamping = design_data.physics["ang_damping"]
+            body.angularVelocity = design_data.physics["ang_velocity"]
+            body.linearDamping = design_data.physics["lin_damping"]
+            body.linearVelocity = b2Vec2(math.cos(design_data.physics["lin_velocity_angle"]), math.sin(design_data.physics["lin_velocity_angle"])) * design_data.physics["lin_velocity"]
+            body.inertia = design_data.physics["inertia"]
+            body.fixtures[0].density = design_data.physics["density"]
+            body.fixtures[0].friction = design_data.physics["friction"]
         elif type == BodyType.STATIC_ZONE:
             body = self.create_static_zone(pos, size, angle=angle)
         elif type == BodyType.MOVING_ZONE:
             body = self.create_moving_zone(pos, size, angle=angle)
+            body.angularDamping = design_data.physics["ang_damping"]
+            body.angularVelocity = design_data.physics["ang_velocity"]
+            body.linearDamping = design_data.physics["lin_damping"]
+            body.linearVelocity = b2Vec2(math.cos(design_data.physics["lin_velocity_angle"]), math.sin(design_data.physics["lin_velocity_angle"])) * design_data.physics["lin_velocity"]
+            body.inertia = design_data.physics["inertia"]
+            body.fixtures[0].density = design_data.physics["density"]
+            body.fixtures[0].friction = design_data.physics["friction"]
 
         body.userData.reward = design_data.reward
         body.userData.level = design_data.level
@@ -539,7 +553,7 @@ class BoxEnv(gym.Env):
         self.agent_fix.body.linearDamping = AGENT_LINEAR_DAMPING
 
     # TODO: support colors, circles
-    def create_static_obstacle(self, pos, size, angle=0, reward=-1, level=3):
+    def create_static_obstacle(self, pos, size, angle=0):
         body: b2Body = self.world.CreateStaticBody(
             position=pos, angle=angle
         )
@@ -549,7 +563,7 @@ class BoxEnv(gym.Env):
         body.userData = self.get_static_obstacle_data()
         return body
 
-    def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=-2, level=2):
+    def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
         body: b2Body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False, )
@@ -559,7 +573,7 @@ class BoxEnv(gym.Env):
         body.userData = self.get_moving_obstacle_data()
         return body
 
-    def create_static_zone(self, pos, size, angle=0, reward=1, level=3):
+    def create_static_zone(self, pos, size, angle=0):
         body: b2Body = self.world.CreateStaticBody(
             position=pos, angle=angle)
         fixture: b2Fixture = body.CreatePolygonFixture(
@@ -569,7 +583,7 @@ class BoxEnv(gym.Env):
         body.userData = self.get_static_zone_data()
         return body
 
-    def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=2, level=1):
+    def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
         body: b2Body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False)

@@ -1,4 +1,5 @@
 
+import enum
 import logging
 import math
 from dataclasses import dataclass, field
@@ -26,7 +27,7 @@ class Mode(Enum):
     SIMULATION = 2
     SET_REWARD = 3
     SET_LEVEL = 4
-    SET_MOVEMENT = 5
+    SET_PHYSICS = 5
     ROTATE = 6
 
 
@@ -42,7 +43,7 @@ class ScreenLayout:
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
     board_size: b2Vec2 = b2Vec2(width, height) * 0
     small_font: int = 14
-    normal_font: int = 18
+    normal_font: int = 20
     big_font: int = 24
 
 
@@ -57,15 +58,28 @@ class DesignData:
     vertices: List[b2Vec2] = field(default_factory=list)
     type: Enum = BodyType.STATIC_OBSTACLE
     color: Enum = color.BROWN
-    reward: float = 0
-    reward_inc: float = 0.1
+    reward: float = 0.0
     level: int = 0
 
-    rotated = False
+    # body rotation
+    rotated: bool = False
     rotation_begin: bool = False
     init_vertices: List[b2Vec2] = field(default_factory=list)
-    initial_angle: float = 0
-    delta_angle: float = 0
+    initial_angle: float = 0.0
+    delta_angle: float = 0.0
+
+    # physics
+    physics = {"lin_velocity": 0.0,
+            "lin_velocity_angle": 0.0,
+            "ang_velocity": 0.0,
+            "friction": 0.0,
+            "density": 1.0,
+            "inertia": 0.0,
+            "lin_damping": 0.0,
+            "ang_damping": 0.0}
+    # indicates which param to currently change
+    physics_param_ix = 0
+    float_inc: float = 0.1
 
 
 class BoxUI():
@@ -202,8 +216,8 @@ class BoxUI():
                     if points_num == 2:
                         self.design_data.rotation_begin = True
                         self.set_mode(Mode.ROTATE)
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                    self.set_mode(Mode.SET_MOVEMENT)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+                    self.set_mode(Mode.SET_PHYSICS)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # TODO: check for mouse pos and perform action like select bodies
                     points_num = len(self.design_data.points)
@@ -238,6 +252,7 @@ class BoxUI():
                     pass
 
             elif self.mode == Mode.ROTATE:
+                # TODO: change angle with arrows (like rewards)
                 if self.design_data.rotation_begin:
                     # the user just changed mode to rotate body
                     # saving useful info now
@@ -289,19 +304,19 @@ class BoxUI():
                     self.set_mode(Mode.WORLD_DESIGN)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
                     # increase reward by inc
-                    self.design_data.reward += self.design_data.reward_inc
+                    self.design_data.reward += self.design_data.float_inc
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
                     # decrease reward by inc
-                    self.design_data.reward -= self.design_data.reward_inc
+                    self.design_data.reward -= self.design_data.float_inc
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
                     # increase inc by factor 10
-                    self.design_data.reward_inc = self.design_data.reward_inc * 10
+                    self.design_data.float_inc = self.design_data.float_inc * 10
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
                     # decrease inc by factor 10
-                    self.design_data.reward_inc = self.design_data.reward_inc / 10
+                    self.design_data.float_inc = self.design_data.float_inc / 10
                     pass
 
             elif self.mode == Mode.SET_LEVEL:
@@ -317,9 +332,29 @@ class BoxUI():
                     self.design_data.level -= 1
                     pass
 
-            elif self.mode == Mode.SET_MOVEMENT:
-                # TODO: movements
-
+            elif self.mode == Mode.SET_PHYSICS:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+                    self.set_mode(Mode.WORLD_DESIGN)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                    # toggle physics parameter to change
+                    self.design_data.physics_param_ix = (self.design_data.physics_param_ix + 1) % len(list(self.design_data.physics))
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
+                    # increase reward by inc
+                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] += self.design_data.float_inc
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
+                    # decrease reward by inc
+                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] -= self.design_data.float_inc
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
+                    # increase inc by factor 10
+                    self.design_data.float_inc = self.design_data.float_inc * 10
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
+                    # decrease inc by factor 10
+                    self.design_data.float_inc = self.design_data.float_inc / 10
+                    pass
                 pass
 
             elif self.mode == Mode.SIMULATION:
@@ -446,7 +481,7 @@ class BoxUI():
         # title
         s = "DESIGN DATA"
         text_surface = text_font.render(
-            s, True, color.BLACK, color.GREEN)
+            s, True, color.BLACK, color.WHITE)
         self.screen.blit(text_surface, pos)
 
         text_font = pygame.font.SysFont(
@@ -454,15 +489,35 @@ class BoxUI():
 
         data = ["Shape: {}".format(self.design_data.shape.name),
                 "Type: {}".format(self.design_data.type.name),
+                "Angle: {}".format(round(self.design_data.delta_angle, 3)),
                 "Reward: {}".format(round(self.design_data.reward, 3)),
-                "Reward inc: {}".format(round(self.design_data.reward_inc, 3)),
-                "Level: {}".format(self.design_data.level)]
+                "Level: {}".format(self.design_data.level),
+                "Parameter increment: {}".format((self.design_data.float_inc))]
 
         for s in data:
             pos += b2Vec2(0, text_surface.get_height())
             text_surface = text_font.render(
-                s, True, color.BLACK, color.GREEN)
+                s, True, color.BLACK, color.WHITE)
             self.screen.blit(text_surface, pos)
+
+        if self.design_data.type == BodyType.MOVING_OBSTACLE or \
+            self.design_data.type == BodyType.MOVING_ZONE:
+            physic_params = ["Velocity: {}".format(round(self.design_data.physics["lin_velocity"], 3)),
+                        "Velocity angle: {}".format(round(self.design_data.physics["lin_velocity_angle"], 3)),
+                        "Angular velocity: {}".format(round(self.design_data.physics["ang_velocity"], 3)),
+                        "Friction: {}".format(round(self.design_data.physics["friction"], 3)),
+                        "Density: {}".format(round(self.design_data.physics["density"], 3)),
+                        "Inertia: {}".format(round(self.design_data.physics["inertia"], 3)),
+                        "Linear damping: {}".format(round(self.design_data.physics["lin_damping"], 3)),
+                        "Angular damping: {}".format(round(self.design_data.physics["ang_damping"], 3))]
+
+            for ix, s in enumerate(physic_params):
+                pos += b2Vec2(0, text_surface.get_height())
+                if ix == self.design_data.physics_param_ix:
+                    text_surface = text_font.render(s, True, color.BLACK, color.GREEN)
+                else:
+                    text_surface = text_font.render(s, True, color.BLACK, color.WHITE)
+                self.screen.blit(text_surface, pos)
 
     def render_commands(self):
         text_font = pygame.font.SysFont(
@@ -480,24 +535,45 @@ class BoxUI():
             'Comic Sans MS', self.layout.normal_font)
 
         if self.mode == Mode.WORLD_DESIGN:
-            commands = [{"key": "R", "description": "rectangle"},
+            commands = [{"key": "mouse click", "description": "fix point"},
+                        {"key": "R", "description": "rectangle"},
                         {"key": "C", "description": "circle"},
                         {"key": "T", "description": "type"},
-                        {"key": "A", "description": "rotate"},
+                        {"key": "A", "description": "rotate"}, # TODO: only if rect shape
+                        {"key": "P", "description": "physics"},
                         {"key": "W", "description": "reward"},
                         {"key": "L", "description": "level"},
                         {"key": "U", "description": "use"},
-                        {"key": "S", "description": "save"}]
+                        {"key": "S", "description": "save"},
+                        {"key": "ESC", "description": "exit"}]
+        if self.mode == Mode.ROTATE:
+            commands = [{"key": "A", "description": "finish rotating"},
+                        {"key": "mouse movement", "description": "rotate"},
+                        {"key": "mouse click", "description": "fix point"},
+                        {"key": "ESC", "description": "exit"}]
         elif self.mode == Mode.SET_REWARD:
-            commands = [{"key": "UP", "description": "increase reward"},
+            commands = [{"key": "W", "description": "finish set reward"},
+                        {"key": "UP", "description": "increase reward"},
                         {"key": "DOWN", "description": "decrease reward"},
                         {"key": "RIGHT", "description": "increase reward inc"},
-                        {"key": "LEFT", "description": "decrease reward inc"}, ]
+                        {"key": "LEFT", "description": "decrease reward inc"},
+                        {"key": "ESC", "description": "exit"}]
         elif self.mode == Mode.SET_LEVEL:
-            commands = [{"key": "UP", "description": "increase level"},
-                        {"key": "DOWN", "description": "decrease level"}]
+            commands = [{"key": "L", "description": "finish set level"},
+                        {"key": "UP", "description": "increase level"},
+                        {"key": "DOWN", "description": "decrease level"},
+                        {"key": "ESC", "description": "exit"}]
+        elif self.mode == Mode.SET_PHYSICS:
+            commands = [{"key": "P", "description": "finish set physics"},
+                        {"key": "SPACE", "description": "toggle parameter"},
+                        {"key": "UP", "description": "increase parameter"},
+                        {"key": "DOWN", "description": "decrease parameter"},
+                        {"key": "RIGHT", "description": "increase parameter inc"},
+                        {"key": "LEFT", "description": "decrease parameter inc"},
+                        {"key": "ESC", "description": "exit"}]
         elif self.mode == Mode.SIMULATION:
-            commands = [{"key": "M", "description": "manual"}]
+            commands = [{"key": "M", "description": "manual"},
+                        {"key": "ESC", "description": "exit"}]
 
         for command in commands:
             pos += b2Vec2(0, text_surface.get_height())
