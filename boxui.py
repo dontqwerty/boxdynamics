@@ -154,7 +154,14 @@ class BoxUI():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 # TODO: quit signal to BoxEnv
                 self.quit()
-                return
+
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_DELETE:
+                # abort current changes to body
+                try:
+                    self.design_bodies.pop()
+                except IndexError:
+                    pass
+                self.design_data = DesignData()
 
             elif self.mode == Mode.WORLD_DESIGN:
                 # TODO: check for delete key and cancel creating
@@ -195,6 +202,8 @@ class BoxUI():
                     if points_num == 2:
                         self.design_data.rotation_begin = True
                         self.set_mode(Mode.ROTATE)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                    self.set_mode(Mode.SET_MOVEMENT)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # TODO: check for mouse pos and perform action like select bodies
                     points_num = len(self.design_data.points)
@@ -305,6 +314,7 @@ class BoxUI():
 
             elif self.mode == Mode.SET_MOVEMENT:
                 # TODO: movements
+
                 pass
 
             elif self.mode == Mode.SIMULATION:
