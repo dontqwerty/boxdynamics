@@ -248,7 +248,8 @@ class BoxUI():
                     initial_mouse = b2Vec2(pygame.mouse.get_pos())
 
                     # initial angle
-                    self.design_data.initial_angle = self.get_angle(self.design_data.points[0], initial_mouse)
+                    self.design_data.initial_angle = self.get_angle(
+                        self.design_data.points[0], initial_mouse)
 
                     # vertices when starting the rotation
                     self.design_data.init_vertices = self.design_data.vertices.copy()
@@ -259,24 +260,28 @@ class BoxUI():
                     self.set_mode(Mode.WORLD_DESIGN)
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    self.design_bodies.pop() # removing old body
-                    self.design_bodies.append(self.design_data) # adding new updated body
-                    self.design_data = DesignData() # reset of design data for new body
+                    self.design_bodies.pop()  # removing old body
+                    # adding new updated body
+                    self.design_bodies.append(self.design_data)
+                    self.design_data = DesignData()  # reset of design data for new body
                     self.set_mode(Mode.WORLD_DESIGN)
 
                 elif event.type == pygame.MOUSEMOTION:
                     mouse_pos = b2Vec2(pygame.mouse.get_pos())
 
-                    self.design_data.delta_angle = self.get_angle(self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
+                    self.design_data.delta_angle = self.get_angle(
+                        self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
 
                     # rotating every vertex
                     for vix, vertex in enumerate(self.design_data.vertices):
                         distance = (vertex - self.design_data.points[0]).length
 
-                        init_angle = self.get_angle(self.design_data.points[0], self.design_data.init_vertices[vix])
+                        init_angle = self.get_angle(
+                            self.design_data.points[0], self.design_data.init_vertices[vix])
 
                         final_angle = init_angle + self.design_data.delta_angle
-                        self.design_data.vertices[vix] = self.design_data.points[0] + (b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
+                        self.design_data.vertices[vix] = self.design_data.points[0] + (
+                            b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
 
             elif self.mode == Mode.SET_REWARD:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_w:
@@ -487,7 +492,7 @@ class BoxUI():
             commands = [{"key": "UP", "description": "increase reward"},
                         {"key": "DOWN", "description": "decrease reward"},
                         {"key": "RIGHT", "description": "increase reward inc"},
-                        {"key": "LEFT", "description": "decrease reward inc"},]
+                        {"key": "LEFT", "description": "decrease reward inc"}, ]
         elif self.mode == Mode.SET_LEVEL:
             commands = [{"key": "UP", "description": "increase level"},
                         {"key": "DOWN", "description": "decrease level"}]
@@ -499,7 +504,6 @@ class BoxUI():
             s = "{}: {}".format(command["key"], command["description"])
             text_surface = text_font.render(s, True, color.BACK, color.WHITE)
             self.screen.blit(text_surface, pos)
-
 
     def render_action(self):
         p1 = self.__pygame_coord(self.env.agent_head)
