@@ -12,7 +12,7 @@ from Box2D import (b2Body, b2Contact, b2ContactListener, b2Fixture,
 
 import boxcolors as color
 from boxdef import BodyShape, BodyType
-from boxui import BoxUI, Mode, ScreenLayout
+from boxui import BoxUI, DesignData, Mode, ScreenLayout
 from boxutils import get_line_eq, get_intersection
 
 TARGET_FPS = 60
@@ -277,21 +277,25 @@ class BoxEnv(gym.Env):
             width = (points[0] - points[1]).length / 2
             height = (points[1] - points[2]).length / 2
             size = (width, height)
-            angle = -(design.alpha - design.angle)
+            angle = -design.delta_angle
 
-            self.__create_body(pos, size, design.type, angle)
+            self.__create_body(pos, size, angle, design)
 
         self.ui.design_bodies.clear()
 
-    def __create_body(self, pos, size, type, angle=0):
+    def __create_body(self, pos, size, angle, design_data: DesignData):
+        type = design_data.type
         if type == BodyType.STATIC_OBSTACLE:
-            self.create_static_obstacle(pos, size, angle=angle)
+            body = self.create_static_obstacle(pos, size, angle=angle)
         elif type == BodyType.MOVING_OBSTACLE:
-            self.create_moving_obstacle(pos, size, angle=angle)
+            body = self.create_moving_obstacle(pos, size, angle=angle)
         elif type == BodyType.STATIC_ZONE:
-            self.create_static_zone(pos, size, angle=angle)
+            body = self.create_static_zone(pos, size, angle=angle)
         elif type == BodyType.MOVING_ZONE:
-            self.create_moving_zone(pos, size, angle=angle)
+            body = self.create_moving_zone(pos, size, angle=angle)
+
+        body.userData.reward = design_data.reward
+        body.userData.level = design_data.level
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key
@@ -543,8 +547,7 @@ class BoxEnv(gym.Env):
             box=size)
 
         body.userData = self.get_static_obstacle_data()
-        body.userData.reward = reward
-        body.userData.level = level
+        return body
 
     def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=-2, level=2):
         body: b2Body = self.world.CreateDynamicBody(
@@ -554,8 +557,7 @@ class BoxEnv(gym.Env):
             box=size, density=MOVING_OBSTACLE_DENSITY)
 
         body.userData = self.get_moving_obstacle_data()
-        body.userData.reward = reward
-        body.userData.level = level
+        return body
 
     def create_static_zone(self, pos, size, angle=0, reward=1, level=3):
         body: b2Body = self.world.CreateStaticBody(
@@ -564,11 +566,8 @@ class BoxEnv(gym.Env):
             box=size)
         fixture.sensor = True
 
-        body.userData = BodyData(
-            type=BodyType.STATIC_ZONE, color=color.STATIC_ZONE,
-            reward=reward, level=level)
-        body.userData.reward = reward
-        body.userData.level = level
+        body.userData = self.get_static_zone_data()
+        return body
 
     def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0, reward=2, level=1):
         body: b2Body = self.world.CreateDynamicBody(
@@ -580,8 +579,7 @@ class BoxEnv(gym.Env):
         fixture.sensor = True
 
         body.userData = self.get_moving_zone_data()
-        body.userData.reward = reward
-        body.userData.level = level
+        return body
 
     # user functions
     def get_world_size(self) -> tuple:

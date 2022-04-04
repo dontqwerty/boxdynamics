@@ -6,8 +6,10 @@ from enum import Enum
 from logging import debug
 from multiprocessing.sharedctypes import Value
 from time import sleep
+from tracemalloc import start
 from typing import List
 
+import numpy as np
 import pygame
 from Box2D import b2Vec2
 
@@ -22,6 +24,10 @@ class Mode(Enum):
     NONE = 0
     WORLD_DESIGN = 1  # create box, circle, save, use
     SIMULATION = 2
+    SET_REWARD = 3
+    SET_LEVEL = 4
+    SET_MOVEMENT = 5
+    ROTATE = 6
 
 
 @dataclass
@@ -29,14 +35,14 @@ class ScreenLayout:
     width: int = 800  # pixels
     height: int = 800
     size: b2Vec2 = b2Vec2(width, height)
-    simulation_xshift = 100
-    simulation_yshift = 70
+    simulation_xshift = 200
+    simulation_yshift = 16
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
     simulation_size: b2Vec2 = b2Vec2(600, 600)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
     board_size: b2Vec2 = b2Vec2(width, height) * 0
     small_font: int = 14
-    normal_font: int = 16
+    normal_font: int = 18
     big_font: int = 24
 
 
@@ -45,18 +51,21 @@ class DesignData:
     shape: Enum = BodyShape.BOX  # used if creating
     selected: bool = False  # TODO: selectable
 
-    points: List[b2Vec2] = field(default_factory=list)  # center and radius for circles
-    vertices: List[b2Vec2] = field(default_factory=list) # all four vertices for rectangles
-    rotated = False
-    alpha: float = 0
-    beta: float = 0
-    angle: float = 0
-    gamma: float = 0
-    mouse_radius: float = None
-    rotating: bool = False  # used to rotate the object
+    # center and radius for circles
+    points: List[b2Vec2] = field(default_factory=list)
+    # all four vertices for rectangles
+    vertices: List[b2Vec2] = field(default_factory=list)
     type: Enum = BodyType.STATIC_OBSTACLE
     color: Enum = color.BROWN
+    reward: float = 0
+    reward_inc: float = 0.1
     level: int = 0
+
+    rotated = False
+    rotation_begin: bool = False
+    init_vertices: List[b2Vec2] = field(default_factory=list)
+    initial_angle: float = 0
+    delta_angle: float = 0
 
 
 class BoxUI():
@@ -114,15 +123,27 @@ class BoxUI():
     def render(self):
         self.screen.fill(color.BACK)
 
-        if self.mode == Mode.WORLD_DESIGN:
-            self.render_design()
-
         self.render_world()
 
         if self.mode == Mode.SIMULATION:
             self.render_action()
             self.render_observations()
             self.draw_distances()
+
+        elif self.mode != Mode.SIMULATION and self.mode != Mode.NONE:
+            self.render_design()
+
+        self.render_commands()
+
+        # title
+        text_font = pygame.font.SysFont(
+            'Comic Sans MS', self.layout.big_font)
+        s = str(self.mode)
+        text_surface = text_font.render(
+            s, True, color.BLACK, color.WHITE)
+        pos = b2Vec2((self.layout.width - text_surface.get_width()) / 2, 0)
+        # print(text_surface.get_height())
+        self.screen.blit(text_surface, pos)
 
         pygame.display.flip()
         self.clock.tick(self.target_fps)
@@ -147,7 +168,8 @@ class BoxUI():
                     # TODO: save function
                     self.set_mode(Mode.SIMULATION)
                     pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_u:
+                elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
+                                                       event.key == pygame.K_RETURN):
                     # use created world
                     # TODO: check for saving if not saved
                     self.set_mode(Mode.SIMULATION)
@@ -159,27 +181,25 @@ class BoxUI():
                     self.design_data.color = self.env.get_data(
                         self.design_data.type).color
                     pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_w:
+                    # reward
+                    self.set_mode(Mode.SET_REWARD)
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                    # level
+                    self.set_mode(Mode.SET_LEVEL)
+                    pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_a:
                     # angle
                     points_num = len(self.design_data.points)
-                    if points_num > 0:
-                        self.design_data.rotating = not self.design_data.rotating
-                        if self.design_data.rotating is False:
-                            self.design_data.mouse_radius = None
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
-                    # level up
-                    self.design_data.level += 1
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
-                    # level down
-                    self.design_data.level -= 1
-                    pass
+                    if points_num == 2:
+                        self.design_data.rotation_begin = True
+                        self.set_mode(Mode.ROTATE)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # TODO: check for mouse pos and perform action like select bodies
-                    mouse_pos = pygame.mouse.get_pos()
-
                     points_num = len(self.design_data.points)
                     if points_num == 0:
+                        mouse_pos = pygame.mouse.get_pos()
                         self.design_data.points.append(b2Vec2(mouse_pos))
                     elif points_num == 2:
                         # reset design data
@@ -196,86 +216,9 @@ class BoxUI():
                         except ValueError:
                             pass
 
-                        if self.design_data.rotating:
-                            # deltas between p1 and mouse pos
-                            delta_x = abs(
-                                mouse_pos.x - self.design_data.points[0].x)
-                            delta_y = abs(
-                                mouse_pos.y - self.design_data.points[0].y)
-
-                            if self.design_data.rotated is False:
-                                # first time rotating body
-                                self.design_data.rotated = True
-                                self.design_data.mouse_radius = (
-                                    self.design_data.points[0] - mouse_pos).length
-
-                                # first quadrant
-                                if mouse_pos.x >= self.design_data.points[0].x and mouse_pos.y >= self.design_data.points[0].y:
-                                    self.design_data.angle = math.atan(
-                                        delta_y / delta_x)
-                                    self.design_data.beta = 0
-                                    self.design_data.gamma = math.pi / 2
-                                    pass
-                                # second quadrant
-                                elif mouse_pos.x <= self.design_data.points[0].x and mouse_pos.y >= self.design_data.points[0].y:
-                                    self.design_data.angle = (
-                                        math.pi) - math.atan(delta_y / delta_x)
-                                    self.design_data.beta = math.pi / 2
-                                    self.design_data.gamma = math.pi
-                                    pass
-                                # third quadrant
-                                elif mouse_pos.x <= self.design_data.points[0].x and mouse_pos.y <= self.design_data.points[0].y:
-                                    self.design_data.angle = (
-                                        math.pi) + math.atan(delta_y / delta_x)
-                                    self.design_data.beta = math.pi
-                                    self.design_data.gamma = 3 * math.pi / 2
-                                    pass
-                                # fourth quadrant
-                                elif mouse_pos.x >= self.design_data.points[0].x and mouse_pos.y <= self.design_data.points[0].y:
-                                    self.design_data.angle = - \
-                                        math.atan(delta_y / delta_x)
-                                    self.design_data.beta = 3 * math.pi / 2
-                                    self.design_data.gamma = 2 * math.pi
-                                    pass
-
-                                self.design_data.alpha = self.design_data.angle
-
-                            else:
-                                # second or more time rotating
-                                # first quadrant
-                                if mouse_pos.x > self.design_data.points[0].x and mouse_pos.y > self.design_data.points[0].y:
-                                    self.design_data.alpha = math.atan(
-                                        delta_y / delta_x)
-                                    pass
-                                # second quadrant
-                                elif mouse_pos.x < self.design_data.points[0].x and mouse_pos.y > self.design_data.points[0].y:
-                                    self.design_data.alpha = (
-                                        math.pi) - math.atan(delta_y / delta_x)
-                                    pass
-                                # third quadrant
-                                elif mouse_pos.x < self.design_data.points[0].x and mouse_pos.y < self.design_data.points[0].y:
-                                    self.design_data.alpha = (
-                                        math.pi) + math.atan(delta_y / delta_x)
-                                    pass
-                                # fourth quadrant
-                                elif mouse_pos.x > self.design_data.points[0].x and mouse_pos.y < self.design_data.points[0].y:
-                                    self.design_data.alpha = - \
-                                        math.atan(delta_y / delta_x)
-                                    pass
-
-
-                            # TODO: second round of rotating
-                            if self.design_data.mouse_radius is None:
-                                self.design_data.angle = self.design_data.alpha
-                                self.design_data.mouse_radius = (
-                                    self.design_data.points[0] - mouse_pos).length
-
-                            mouse_pos = self.design_data.points[0] + b2Vec2(math.cos(self.design_data.alpha), math.sin(
-                                self.design_data.alpha)) * self.design_data.mouse_radius
-                            pass
-
                         if points_num == 2:
-                            self.design_data.vertices = self.get_vertices(self.design_data)
+                            self.design_data.vertices = self.get_vertices(
+                                self.design_data)
                             # replacing old point with new point on mouse position
                             self.design_data.points.pop()
 
@@ -285,15 +228,127 @@ class BoxUI():
                         self.design_bodies.append(self.design_data)
                     pass
 
+            elif self.mode == Mode.ROTATE:
+                if self.design_data.rotation_begin:
+                    # the user just changed mode to rotate body
+                    # saving useful info now
+
+                    self.design_data.rotated = True
+
+                    # initial mouse position
+                    initial_mouse = b2Vec2(pygame.mouse.get_pos())
+
+                    # initial angle
+                    self.design_data.initial_angle = self.get_angle(self.design_data.points[0], initial_mouse)
+
+                    # vertices when starting the rotation
+                    self.design_data.init_vertices = self.design_data.vertices.copy()
+
+                    self.design_data.rotation_begin = False
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_a:
+                    self.set_mode(Mode.WORLD_DESIGN)
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    self.design_bodies.pop() # removing old body
+                    self.design_bodies.append(self.design_data) # adding new updated body
+                    self.design_data = DesignData() # reset of design data for new body
+                    self.set_mode(Mode.WORLD_DESIGN)
+
+                elif event.type == pygame.MOUSEMOTION:
+                    mouse_pos = b2Vec2(pygame.mouse.get_pos())
+
+                    self.design_data.delta_angle = self.get_angle(self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
+
+                    # rotating every vertex
+                    for vix, vertex in enumerate(self.design_data.vertices):
+                        distance = (vertex - self.design_data.points[0]).length
+
+                        init_angle = self.get_angle(self.design_data.points[0], self.design_data.init_vertices[vix])
+
+                        final_angle = init_angle + self.design_data.delta_angle
+                        self.design_data.vertices[vix] = self.design_data.points[0] + (b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
+
+            elif self.mode == Mode.SET_REWARD:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_w:
+                    # return to world design mode
+                    self.set_mode(Mode.WORLD_DESIGN)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
+                    # increase reward by inc
+                    self.design_data.reward += self.design_data.reward_inc
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
+                    # decrease reward by inc
+                    self.design_data.reward -= self.design_data.reward_inc
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
+                    # increase inc by factor 10
+                    self.design_data.reward_inc = self.design_data.reward_inc * 10
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
+                    # decrease inc by factor 10
+                    self.design_data.reward_inc = self.design_data.reward_inc / 10
+                    pass
+
+            elif self.mode == Mode.SET_LEVEL:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                    # return to world design mode
+                    self.set_mode(Mode.WORLD_DESIGN)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
+                    # increase level by inc
+                    self.design_data.level += 1
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
+                    # decrease level by inc
+                    self.design_data.level -= 1
+                    pass
+
+            elif self.mode == Mode.SET_MOVEMENT:
+                # TODO: movements
+                pass
+
             elif self.mode == Mode.SIMULATION:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                    # TODO: toggle manual mode
                     self.env.manual_mode = not self.env.manual_mode
                     pass
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # TODO: check for mouse pos and perform action
                     # show body properties when clicked
+                    # let user change level
                     pass
+
+    def get_angle(self, pivot: b2Vec2, point: b2Vec2):
+        delta = point - pivot
+        # first quadrant
+        if point.x >= pivot.x and point.y >= pivot.y:
+            try:
+                angle = math.atan(delta.y / delta.x)
+            except ZeroDivisionError:
+                angle = math.atan(np.inf)
+            pass
+        # second quadrant
+        elif point.x <= pivot.x and point.y >= pivot.y:
+            try:
+                angle = math.pi + math.atan(delta.y / delta.x)
+            except ZeroDivisionError:
+                angle = math.atan(-np.inf)
+            pass
+        # third quadrant
+        elif point.x <= pivot.x and point.y <= pivot.y:
+            try:
+                angle = math.pi + math.atan(delta.y / delta.x)
+            except ZeroDivisionError:
+                angle = math.atan(-np.inf)
+            pass
+        # fourth quadrant
+        elif point.x >= pivot.x and point.y <= pivot.y:
+            try:
+                angle = math.atan(delta.y / delta.x)
+            except ZeroDivisionError:
+                angle = math.atan(np.inf)
+            pass
+
+        return angle
 
     def toggle_enum(self, e, skip=[]):
         enum_list = list(type(e))
@@ -347,7 +402,7 @@ class BoxUI():
     def render_design(self, types=BodyType):
         # Draw the world based on bodies levels
         bodies_levels: List[tuple(DesignData, int)] = [[b, b.level]
-                         for b in self.design_bodies]
+                                                       for b in self.design_bodies]
         bodies_levels.sort(key=lambda x: x[1], reverse=False)
 
         for body, _ in bodies_levels:
@@ -364,35 +419,77 @@ class BoxUI():
                     pygame.draw.circle(
                         self.screen, body.color, body.points[0], radius)
 
-        self.render_corner_text()
+        self.render_design_data()
 
-        # render text: commands, current body properties
+    def render_design_data(self):
+        # rendering design data when user is designin shape
+        text_font = pygame.font.SysFont(
+            'Comic Sans MS', self.layout.big_font)
 
-    def render_corner_text(self):
-        # rendering infos when user is designin shape
+        pos = b2Vec2(0, self.layout.height / 2)
+
+        # title
+        s = "DESIGN DATA"
+        text_surface = text_font.render(
+            s, True, color.BLACK, color.GREEN)
+        self.screen.blit(text_surface, pos)
+
         text_font = pygame.font.SysFont(
             'Comic Sans MS', self.layout.normal_font)
 
-        pos = self.layout.simulation_pos
-        s = "Shape: {}".format(self.design_data.shape)
+        data = ["Shape: {}".format(self.design_data.shape.name),
+                "Type: {}".format(self.design_data.type.name),
+                "Reward: {}".format(round(self.design_data.reward, 3)),
+                "Reward inc: {}".format(round(self.design_data.reward_inc, 3)),
+                "Level: {}".format(self.design_data.level)]
+
+        for s in data:
+            pos += b2Vec2(0, text_surface.get_height())
+            text_surface = text_font.render(
+                s, True, color.BLACK, color.GREEN)
+            self.screen.blit(text_surface, pos)
+
+    def render_commands(self):
+        text_font = pygame.font.SysFont(
+            'Comic Sans MS', self.layout.big_font)
+        pos = b2Vec2(0, self.layout.simulation_yshift)
+
+        # title
         text_surface = text_font.render(
-            s, True, color.BLACK, color.GREEN)
+            "COMMANDS", True, color.BLACK, color.WHITE)
         self.screen.blit(text_surface, pos)
 
-        pos = self.layout.simulation_pos + b2Vec2(0, text_surface.get_height())
-        s = "Type: {}".format(self.design_data.type)
-        text_surface = text_font.render(
-            s, True, color.BLACK, color.GREEN)
-        self.screen.blit(text_surface, pos)
+        commands = list()
 
-        pos = self.layout.simulation_pos + \
-            b2Vec2(0, 2*text_surface.get_height())
-        s = "Level: {}".format(self.design_data.level)
-        text_surface = text_font.render(
-            s, True, color.BLACK, color.GREEN)
-        self.screen.blit(text_surface, pos)
+        text_font = pygame.font.SysFont(
+            'Comic Sans MS', self.layout.normal_font)
 
-        pass
+        if self.mode == Mode.WORLD_DESIGN:
+            commands = [{"key": "R", "description": "rectangle"},
+                        {"key": "C", "description": "circle"},
+                        {"key": "T", "description": "type"},
+                        {"key": "A", "description": "rotate"},
+                        {"key": "W", "description": "reward"},
+                        {"key": "L", "description": "level"},
+                        {"key": "U", "description": "use"},
+                        {"key": "S", "description": "save"}]
+        elif self.mode == Mode.SET_REWARD:
+            commands = [{"key": "UP", "description": "increase reward"},
+                        {"key": "DOWN", "description": "decrease reward"},
+                        {"key": "RIGHT", "description": "increase reward inc"},
+                        {"key": "LEFT", "description": "decrease reward inc"},]
+        elif self.mode == Mode.SET_LEVEL:
+            commands = [{"key": "UP", "description": "increase level"},
+                        {"key": "DOWN", "description": "decrease level"}]
+        elif self.mode == Mode.SIMULATION:
+            commands = [{"key": "M", "description": "manual"}]
+
+        for command in commands:
+            pos += b2Vec2(0, text_surface.get_height())
+            s = "{}: {}".format(command["key"], command["description"])
+            text_surface = text_font.render(s, True, color.BACK, color.WHITE)
+            self.screen.blit(text_surface, pos)
+
 
     def render_action(self):
         p1 = self.__pygame_coord(self.env.agent_head)
@@ -515,20 +612,44 @@ class BoxUI():
 
     #     return b2Vec2(x, self.layout.height - self.layout.board_size.y + y)
 
+    # def get_vertices(self, body: DesignData):
+    #     p1 = body.points[0]
+    #     p3 = body.points[1]
+    #     line11 = get_line_eq_angle(
+    #         p1, body.beta + (body.alpha - body.angle))
+    #     line12 = get_line_eq_angle(
+    #         p1, body.gamma + (body.alpha - body.angle))
+
+    #     line21 = get_line_eq_angle(
+    #         p3, body.gamma + (body.alpha - body.angle))
+    #     line22 = get_line_eq_angle(
+    #         p3, body.beta + (body.alpha - body.angle))
+
+    #     p2 = get_intersection(line11, line21)
+    #     p4 = get_intersection(line12, line22)
+
+    #     return [p1, p2, p3, p4]
+
     def get_vertices(self, body: DesignData):
         p1 = body.points[0]
         p3 = body.points[1]
         if body.rotated:
 
+            init_angle1 = self.get_angle(p1, self.design_data.init_vertices[1])
+            final_angle1 = init_angle1 + self.design_data.delta_angle
+
+            init_angle2 = self.get_angle(p1, self.design_data.init_vertices[3])
+            final_angle2 = init_angle2 + self.design_data.delta_angle
+
             line11 = get_line_eq_angle(
-                p1, body.beta + (body.alpha - body.angle))
+                p1, final_angle1)
             line12 = get_line_eq_angle(
-                p1, body.gamma + (body.alpha - body.angle))
+                p1, final_angle2)
 
             line21 = get_line_eq_angle(
-                p3, body.gamma + (body.alpha - body.angle))
+                p3, final_angle2)
             line22 = get_line_eq_angle(
-                p3, body.beta + (body.alpha - body.angle))
+                p3, final_angle1)
 
             p2 = get_intersection(line11, line21)
             p4 = get_intersection(line12, line22)
