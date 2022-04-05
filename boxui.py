@@ -1,13 +1,12 @@
 
+import json
 import logging
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from logging import debug
-from multiprocessing.sharedctypes import Value
+from logging import debug, info
 from time import sleep
-from tracemalloc import start
-from typing import List
+from typing import Dict, List
 
 import numpy as np
 import pygame
@@ -45,7 +44,6 @@ class ScreenLayout:
     normal_font: int = 20
     big_font: int = 32
 
-
 @dataclass
 class DesignData:
     shape: Enum = BodyShape.BOX  # used if creating
@@ -67,17 +65,10 @@ class DesignData:
     initial_angle: float = 0.0
     delta_angle: float = 0.0
 
-    # physics
-    physics = {"lin_velocity": 0.0,
-               "lin_velocity_angle": 0.0,
-               "ang_velocity": 0.0,
-               "friction": 0.0,
-               "density": 1.0,
-               "inertia": 0.0,
-               "lin_damping": 0.0,
-               "ang_damping": 0.0}
+    physics: Dict = field(default_factory=dict)
+
     # indicates which param to currently change
-    physics_param_ix = 0
+    physics_param_ix: int = 0
     float_inc: float = 0.1
 
 
@@ -96,7 +87,7 @@ class BoxUI():
         self.design_bodies: List[DesignData] = list()
 
         # setting up design variables
-        self.design_data = DesignData()
+        self.restore_design_data()
 
         # pygame setup
         self.screen = pygame.display.set_mode(
@@ -117,8 +108,8 @@ class BoxUI():
         self.design_surface_height = 0
         self.commands_surface_height = 0
 
-        logging.basicConfig(level=logging.DEBUG)
-        debug("BoxUI created")
+        logging.basicConfig(level=logging.INFO)
+        info("BoxUI created")
 
         pass
 
@@ -175,6 +166,17 @@ class BoxUI():
         self.clock.tick(self.target_fps)
         pass
 
+    def restore_design_data(self):
+        self.design_data = DesignData()
+        self.design_data.physics = {"lin_velocity": 0.0,
+                                    "lin_velocity_angle": 0.0,
+                                    "ang_velocity": 0.0,
+                                    "friction": 0.0,
+                                    "density": 1.0,
+                                    "inertia": 0.0,
+                                    "lin_damping": 0.0,
+                                    "ang_damping": 0.0}
+
     def user_input(self):
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -187,7 +189,7 @@ class BoxUI():
                     self.design_bodies.pop()
                 except IndexError:
                     pass
-                self.design_data = DesignData()
+                self.restore_design_data()
 
             elif self.mode == Mode.WORLD_DESIGN:
                 # TODO: check for delete key and cancel creating
@@ -199,6 +201,46 @@ class BoxUI():
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
                     # TODO: save function
+
+                    a = [list(i.__dict__.items()).copy() for i in (self.design_bodies.copy())]
+
+                    new_design_bodies = list()
+
+                    for bix, body in enumerate(a):
+                        new_design_bodies.append(list())
+                        for dix, data in enumerate(body):
+                            new_design_bodies[bix].append(list())
+
+                            name = a[bix][dix][0]
+                            value = a[bix][dix][1]
+                            # appending name of data field
+                            new_design_bodies[bix][dix].append(name)
+                            # getting actual value of dataclass field
+                            if isinstance(value, Enum):
+                                # appending value of data field
+                                new_design_bodies[bix][dix].append(str(value))
+                            elif isinstance(value, list):
+                                # TODO: check if actually all lists contain only b2Vec2 (yes for now)
+                                # appending list for values
+                                new_design_bodies[bix][dix].append(list())
+                                for vix, v in enumerate(value):
+                                    # appending every value in list
+                                    new_design_bodies[bix][dix][1].append(list(b2Vec2(value[vix].x, value[vix].y)))
+                            else:
+                                # TODO: tuples might be dangerous
+                                new_design_bodies[bix][dix].append(value)
+
+                    new_design_bodies = [dict(i) for i in new_design_bodies]
+
+                    with open("test.json", "w") as f:
+                        json.dump(new_design_bodies, f)
+
+                    a = None
+                    with open("test.json", "r") as f:
+                        a = json.load(f)
+
+                    print(a)
+
                     self.set_mode(Mode.SIMULATION)
                     pass
                 elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
@@ -240,7 +282,7 @@ class BoxUI():
                         self.design_data.points.append(b2Vec2(mouse_pos))
                     elif points_num == 2:
                         # reset design data
-                        self.design_data = DesignData()
+                        self.restore_design_data()
                 elif event.type == pygame.MOUSEMOTION:
                     points_num = len(self.design_data.points)
                     if points_num > 0:
@@ -292,7 +334,7 @@ class BoxUI():
                     self.design_bodies.pop()  # removing old body
                     # adding new updated body
                     self.design_bodies.append(self.design_data)
-                    self.design_data = DesignData()  # reset of design data for new body
+                    self.restore_design_data()
                     self.set_mode(Mode.WORLD_DESIGN)
 
                 elif event.type == pygame.MOUSEMOTION:
@@ -385,7 +427,7 @@ class BoxUI():
                     pass
 
     def get_angle(self, pivot: b2Vec2, point: b2Vec2):
-        delta = point - pivot
+        delta: b2Vec2 = point - pivot
         # first quadrant
         if point.x >= pivot.x and point.y >= pivot.y:
             try:
