@@ -40,7 +40,7 @@ MAX_FORCE = 8
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/4  # 2*math.pi
 OBSERVATION_MAX_DISTANCE = 1000  # how far can the agent see
-OBSERVATION_NUM = 10  # number of distance vectors
+OBSERVATION_NUM = 20  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2

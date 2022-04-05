@@ -105,10 +105,14 @@ class BoxUI():
         self.clock = pygame.time.Clock()
         pygame.font.init()  # to render text
 
+        # font
+        self.font = 'Comic Sans MS'
+
         # border when drawing rectangles that contain text
         self.border_width = 10
 
         # will be updated on runtime based on the real dimensions
+        # once the text is rendered
         self.title_surface_height = 0
         self.design_surface_height = 0
         self.commands_surface_height = 0
@@ -148,12 +152,12 @@ class BoxUI():
 
         # title
         text_font = pygame.font.SysFont(
-            'Comic Sans MS', self.layout.big_font)
+            self.font, self.layout.big_font)
         s = "{}".format(self.mode.name)
         text_surface = text_font.render(
-            s, True, color.BLACK, color.GREEN)
+            s, True, color.BLACK, color.INFO_BACK)
         self.title_surface_height = text_surface.get_height()
-        pos = b2Vec2(0, 0)
+        pos = b2Vec2(self.border_width, 0)
         self.screen.blit(text_surface, pos)
 
         self.render_commands()
@@ -441,26 +445,39 @@ class BoxUI():
                     (self.layout.simulation_xshift, 0),
                     (self.layout.simulation_xshift, self.layout.height),
                     (0, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.WHITE, vertices)
+        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
 
         vertices = [(0, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.simulation_yshift),
                     (0, self.layout.simulation_yshift)]
-        pygame.draw.polygon(self.screen, color.WHITE, vertices)
+        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
 
         vertices = [(self.layout.simulation_pos.x + self.layout.simulation_size.x, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.height),
                     (self.layout.simulation_pos.x + self.layout.simulation_size.x, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.WHITE, vertices)
+        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
 
         vertices = [(0, self.layout.simulation_pos.y + self.layout.simulation_size.y),
                     (self.layout.width, self.layout.simulation_pos.y +
                      self.layout.simulation_size.y),
                     (self.layout.width, self.layout.height),
                     (0, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.WHITE, vertices)
+        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
+
+    def render_simulation_data(self):
+        # text_font = pygame.font.SysFont(self.font, self.font_size)
+
+        # # fps
+        # fps = round(self.clock.get_fps())
+        # fps_point = (0, 0)
+        # fps_color = color.GREEN.value if abs(
+        #     fps - self.target_fps) < 10 else color.RED.value
+        # text_surface = text_font.render(
+        #     str(fps), True, color.BLACK.value, fps_color)
+        # self.screen.blit(text_surface, fps_point)
+        pass
 
     def render_design(self, types=BodyType):
         # Draw the world based on bodies levels
@@ -487,13 +504,11 @@ class BoxUI():
     def render_design_data(self):
         # rendering design data when user is designin shape
         text_font = pygame.font.SysFont(
-            'Comic Sans MS', self.layout.big_font)
+            self.font, self.layout.big_font)
 
         design_pos = b2Vec2(0, self.commands_surface_height + self.border_width * 3)
         pos = design_pos.copy()
 
-        pygame.draw.rect(self.screen, color.YELLOW,
-                            pygame.Rect(pos.x, pos.y, self.layout.simulation_xshift, self.design_surface_height))
         pygame.draw.rect(self.screen, color.BLACK,
                             pygame.Rect(pos.x - self.border_width,
                             pos.y,
@@ -504,11 +519,11 @@ class BoxUI():
         pos += b2Vec2(self.border_width, self.border_width)
         s = "DESIGN DATA"
         text_surface = text_font.render(
-            s, True, color.BLACK, color.YELLOW)
+            s, True, color.BLACK, color.INFO_BACK)
         self.screen.blit(text_surface, pos)
 
         text_font = pygame.font.SysFont(
-            'Comic Sans MS', self.layout.normal_font)
+            self.font, self.layout.normal_font)
 
         data = ["Shape: {}".format(self.design_data.shape.name),
                 "Type: {}".format(self.design_data.type.name),
@@ -520,7 +535,7 @@ class BoxUI():
         for s in data:
             pos += b2Vec2(0, text_surface.get_height())
             text_surface = text_font.render(
-                s, True, color.BLACK, color.YELLOW)
+                s, True, color.BLACK, color.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
         if self.design_data.type == BodyType.MOVING_OBSTACLE or \
@@ -547,14 +562,12 @@ class BoxUI():
                         s, True, color.BLACK, color.GREEN)
                 else:
                     text_surface = text_font.render(
-                        s, True, color.BLACK, color.YELLOW)
+                        s, True, color.BLACK, color.INFO_BACK)
                 self.screen.blit(text_surface, pos)
         self.design_surface_height = pos.y - design_pos.y + self.border_width * 3
 
     def render_commands(self):
         pos = b2Vec2(0, self.title_surface_height + self.border_width)
-        pygame.draw.rect(self.screen, color.YELLOW,
-                            pygame.Rect(pos.x, pos.y, self.layout.simulation_xshift, self.commands_surface_height))
         pygame.draw.rect(self.screen, color.BLACK,
                             pygame.Rect(pos.x - self.border_width,
                                     pos.y,
@@ -562,16 +575,16 @@ class BoxUI():
                                     self.commands_surface_height), width=self.border_width)
 
         text_font = pygame.font.SysFont(
-            'Comic Sans MS', self.layout.big_font)
+            self.font, self.layout.big_font)
 
         # title
         pos += b2Vec2(self.border_width, self.border_width)
         text_surface = text_font.render(
-            "COMMANDS", True, color.BLACK, color.YELLOW)
+            "COMMANDS", True, color.BLACK, color.INFO_BACK)
         self.screen.blit(text_surface, pos)
 
         text_font = pygame.font.SysFont(
-            'Comic Sans MS', self.layout.normal_font)
+            self.font, self.layout.normal_font)
 
         commands = list()
         if self.mode == Mode.WORLD_DESIGN:
@@ -623,7 +636,7 @@ class BoxUI():
         for command in commands:
             pos += b2Vec2(0, text_surface.get_height())
             s = "- {}: {}".format(command["key"], command["description"])
-            text_surface = text_font.render(s, True, color.BACK, color.YELLOW)
+            text_surface = text_font.render(s, True, color.BACK, color.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
         self.commands_surface_height = pos.y
@@ -636,7 +649,7 @@ class BoxUI():
 
     def draw_distances(self):
         text_font = pygame.font.SysFont(
-            'Comic Sans MS', self.layout.small_font)
+            self.font, self.layout.small_font)
 
         # drawing distance text
         # TODO: only draw them if there is enough space
@@ -663,109 +676,6 @@ class BoxUI():
                 # drawing intersection points
                 pygame.draw.circle(
                     self.screen, color.INTERSECTION, end_point, 3)
-
-    # def draw_infos_box(self, title):
-    #     info_vertices = [(self.layout.board_pos.x, self.layout.board_pos.y + self.layout.board_size.y),
-    #                      (self.layout.board_pos.x + self.layout.board_size.x,
-    #                       self.layout.board_pos.y + self.layout.board_size.y),
-    #                      (self.layout.board_pos.x +
-    #                       self.layout.board_size.x, self.layout.board_pos.y),
-    #                      self.layout.board_pos]
-    #     pygame.draw.polygon(self.screen, color.BACK, info_vertices)
-
-    #     text_font = pygame.font.SysFont('Comic Sans MS', self.title_font_size)
-    #     s = "{}".format(title)
-    #     text_surface = text_font.render(
-    #         s, True, color.BLACK.value, color.GREEN.value)
-
-    #     # TODO: get center function
-    #     pos = ((self.layout.width - text_surface.get_width()) / 2,
-    #            self.layout.height - self.layout.board_size.y)
-    #     self.screen.blit(text_surface, pos)
-    #     return text_surface.get_height()
-
-    # def draw_design(self):
-    #     title_height = self.draw_infos_box("CREATE MODE")
-
-    #     text_font = pygame.font.SysFont('Comic Sans MS', self.font_size)
-
-    #     # design commands
-    #     for cix, cmd in enumerate(self.design_commands):
-    #         s = "{}: {}".format(cmd["key"], cmd["description"])
-    #         text_surface = text_font.render(
-    #             s, True, color.BLACK.value, color.WHITE.value)
-
-    #         pos = self.get_info_pos(0, cix, title_height)
-    #         self.screen.blit(text_surface, pos)
-
-    #     # design infos
-    #     for iix, info in enumerate(self.design_infos):
-    #         s = "{}: {}".format(info["name"], info["value"])
-    #         text_surface = text_font.render(
-    #             s, True, color.BLACK.value, color.WHITE.value)
-
-    #         pos = self.get_info_pos(1,
-    #                                   iix, title_height)
-    #         self.screen.blit(text_surface, pos)
-
-    # def draw_simulation_infos(self):
-    #     title_height = self.draw_infos_box("SIMULATION MODE")
-
-    #     text_font = pygame.font.SysFont('Comic Sans MS', self.font_size)
-
-    #     # fps
-    #     fps = round(self.clock.get_fps())
-    #     fps_point = (0, 0)
-    #     fps_color = color.GREEN.value if abs(
-    #         fps - self.target_fps) < 10 else color.RED.value
-    #     text_surface = text_font.render(
-    #         str(fps), True, color.BLACK.value, fps_color)
-    #     self.screen.blit(text_surface, fps_point)
-
-    #     max_len = 0
-    #     for iix, info in enumerate(self.screen_infos):
-    #         info_str = "> {}: {}".format(info["name"], info["value"])
-    #         text_surface = text_font.render(
-    #             info_str, True, color.BLACK.value, color.WHITE.value
-    #         )
-
-    #         if info["name"][0:len("contact")] == "contact":
-    #             pos = self.get_info_pos(1, iix, title_height)
-    #         else:
-    #             pos = self.get_info_pos(0, iix, title_height)
-
-    #         self.screen.blit(text_surface, pos)
-
-    # def get_title_pos(self, width, height):
-    #     pass
-
-    # def get_info_pos(self, x_ix, y_ix, title_height):
-    #     x_border = self.layout.width / (INFO_X_SLOTS + 2)
-    #     y_border = self.layout.board_size.y / (INFO_Y_SLOTS + 2)
-
-    #     # TODO: check out of slots
-    #     x = x_ix*(x_border + 1)
-    #     y = y_ix*(y_border + 1) + title_height
-
-    #     return b2Vec2(x, self.layout.height - self.layout.board_size.y + y)
-
-    # def get_vertices(self, body: DesignData):
-    #     p1 = body.points[0]
-    #     p3 = body.points[1]
-    #     line11 = get_line_eq_angle(
-    #         p1, body.beta + (body.alpha - body.angle))
-    #     line12 = get_line_eq_angle(
-    #         p1, body.gamma + (body.alpha - body.angle))
-
-    #     line21 = get_line_eq_angle(
-    #         p3, body.gamma + (body.alpha - body.angle))
-    #     line22 = get_line_eq_angle(
-    #         p3, body.beta + (body.alpha - body.angle))
-
-    #     p2 = get_intersection(line11, line21)
-    #     p4 = get_intersection(line12, line22)
-
-    #     return [p1, p2, p3, p4]
 
     def get_vertices(self, body: DesignData):
         p1 = body.points[0]
