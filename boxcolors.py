@@ -1,5 +1,3 @@
-from enum import Enum
-
 # colors
 BLACK = (0, 0, 0, 0)
 GREY = (128, 128, 128, 255)

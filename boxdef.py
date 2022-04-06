@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import Enum, IntEnum
 
 
-class BodyType(Enum):
+class BodyType(IntEnum):
     AGENT = 0
     STATIC_OBSTACLE = 1
     MOVING_OBSTACLE = 2
@@ -11,6 +11,6 @@ class BodyType(Enum):
     DEFAULT = 6
 
 
-class BodyShape(Enum):
+class BodyShape(IntEnum):
     BOX = 0
     CIRCLE = 1

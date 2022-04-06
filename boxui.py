@@ -2,7 +2,7 @@
 import json
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from logging import debug, info
 from time import sleep
@@ -44,6 +44,7 @@ class ScreenLayout:
     normal_font: int = 20
     big_font: int = 32
 
+
 @dataclass
 class DesignData:
     shape: Enum = BodyShape.BOX  # used if creating
@@ -54,7 +55,7 @@ class DesignData:
     # all four vertices for rectangles
     vertices: List[b2Vec2] = field(default_factory=list)
     type: Enum = BodyType.STATIC_OBSTACLE
-    color: Enum = color.BROWN
+    color: tuple = field(default=color.BROWN)
     reward: float = 0.0
     level: int = 0
 
@@ -161,7 +162,6 @@ class BoxUI():
         elif self.mode != Mode.SIMULATION and self.mode != Mode.NONE:
             self.render_design()
 
-
         pygame.display.flip()
         self.clock.tick(self.target_fps)
         pass
@@ -201,8 +201,10 @@ class BoxUI():
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
                     self.dump_design()
-
                     self.set_mode(Mode.SIMULATION)
+                    pass
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                    self.load_design()
                     pass
                 elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
                                                        event.key == pygame.K_RETURN):
@@ -221,7 +223,7 @@ class BoxUI():
                     # reward
                     self.set_mode(Mode.SET_REWARD)
                     pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_v:
                     # level
                     self.set_mode(Mode.SET_LEVEL)
                     pass
@@ -337,7 +339,7 @@ class BoxUI():
                     pass
 
             elif self.mode == Mode.SET_LEVEL:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_v:
                     # return to world design mode
                     self.set_mode(Mode.WORLD_DESIGN)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
@@ -398,47 +400,47 @@ class BoxUI():
             dump_db.append(list())
             for dix, _ in enumerate(body):
                 dump_db[bix].append(list())
-                name = db[bix][dix][0] # name of dataclass field
-                value = db[bix][dix][1] # value of dataclass field
+                name = db[bix][dix][0]  # name of dataclass field
+                value = db[bix][dix][1]  # value of dataclass field
                 # appending name of data field
                 dump_db[bix][dix].append(name)
                 # getting actual value of dataclass field
                 if isinstance(value, Enum):
                     # appending value of data field
-                    dump_db[bix][dix].append(str(value))
+                    dump_db[bix][dix].append(str(value.name))
                 elif isinstance(value, list):
                     # TODO: check if actually all lists contain only b2Vec2 (yes for now)
                     # appending list for values
                     dump_db[bix][dix].append(list())
                     for vix, v in enumerate(value):
                         # appending every value in list
-                        dump_db[bix][dix][1].append(list(b2Vec2(value[vix].x, value[vix].y)))
+                        dump_db[bix][dix][1].append(
+                            list(b2Vec2(value[vix].x, value[vix].y)))
                 else:
                     # TODO: tuples (and other similar stuff inside DesignData) might be dangerous
                     dump_db[bix][dix].append(value)
 
         dump_db = [dict(body) for body in dump_db]
 
+        # TODO: better name for json
         with open("test.json", "w") as f:
             json.dump(dump_db, f)
 
+    def load_design(self):
         with open("test.json", "r") as f:
             j = json.load(f)
 
-        restored_design_data = DesignData()
-        restored_design_data.physics = {"lin_velocity": 0.0,
-                        "lin_velocity_angle": 0.0,
-                        "ang_velocity": 0.0,
-                        "friction": 0.0,
-                        "density": 1.0,
-                        "inertia": 0.0,
-                        "lin_damping": 0.0,
-                        "ang_damping": 0.0}
-
-        # for body in j:
-        #     for data in j:
-        #         print(data)
-        #     pass
+        # TODO: append to existing design or overwrite?
+        # design_bodies = list()
+        for body in j:
+            design = DesignData(**body)
+            design.shape = BodyShape[design.shape]
+            design.points = [b2Vec2(p) for p in design.points]
+            design.vertices = [b2Vec2(p) for p in design.vertices]
+            design.type = BodyType[design.type]
+            design.init_vertices = [b2Vec2(p) for p in design.init_vertices]
+            # design_bodies.append(design)
+            self.design_bodies.append(design)
 
     def get_angle(self, pivot: b2Vec2, point: b2Vec2):
         delta: b2Vec2 = point - pivot
@@ -562,14 +564,15 @@ class BoxUI():
         text_font = pygame.font.SysFont(
             self.font, self.layout.big_font)
 
-        design_pos = b2Vec2(0, self.commands_surface_height + self.border_width * 3)
+        design_pos = b2Vec2(
+            0, self.commands_surface_height + self.border_width * 3)
         pos = design_pos.copy()
 
         pygame.draw.rect(self.screen, color.BLACK,
-                            pygame.Rect(pos.x - self.border_width,
-                            pos.y,
-                            self.layout.simulation_xshift + self.border_width * 2,
-                            self.design_surface_height), width=self.border_width)
+                         pygame.Rect(pos.x - self.border_width,
+                                     pos.y,
+                                     self.layout.simulation_xshift + self.border_width * 2,
+                                     self.design_surface_height), width=self.border_width)
 
         # title
         pos += b2Vec2(self.border_width, self.border_width)
@@ -625,10 +628,10 @@ class BoxUI():
     def render_commands(self):
         pos = b2Vec2(0, self.title_surface_height + self.border_width)
         pygame.draw.rect(self.screen, color.BLACK,
-                            pygame.Rect(pos.x - self.border_width,
-                                    pos.y,
-                                    self.layout.simulation_xshift + self.border_width * 2,
-                                    self.commands_surface_height), width=self.border_width)
+                         pygame.Rect(pos.x - self.border_width,
+                                     pos.y,
+                                     self.layout.simulation_xshift + self.border_width * 2,
+                                     self.commands_surface_height), width=self.border_width)
 
         text_font = pygame.font.SysFont(
             self.font, self.layout.big_font)
@@ -692,7 +695,8 @@ class BoxUI():
         for command in commands:
             pos += b2Vec2(0, text_surface.get_height())
             s = "- {}: {}".format(command["key"], command["description"])
-            text_surface = text_font.render(s, True, color.BACK, color.INFO_BACK)
+            text_surface = text_font.render(
+                s, True, color.BACK, color.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
         self.commands_surface_height = pos.y
