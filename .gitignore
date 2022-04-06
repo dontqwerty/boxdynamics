@@ -132,4 +132,4 @@ dmypy.json
 test.py
 Box2D-body-and-fixture.txt
 boxuitest.py
-test.json
+*.json

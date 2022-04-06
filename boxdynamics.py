@@ -17,7 +17,7 @@ from boxutils import get_intersection, get_line_eq
 
 TARGET_FPS = 60
 TIME_STEP = 1.0 / TARGET_FPS
-PPM = 8  # pixel per meter
+PPM = 10  # pixel per meter
 
 # world
 BOUNDARIES_WIDTH = 10  # meters
@@ -198,6 +198,7 @@ class BoxEnv(gym.Env):
         super().reset()
 
         # resetting reward
+        # TODO: give reward to agent
         self.reward = 0.0
 
         # returning state after step with None action
@@ -260,7 +261,7 @@ class BoxEnv(gym.Env):
         self.ui.quit()
 
     def world_design(self):
-        self.ui.set_mode(Mode.WORLD_DESIGN)
+        self.ui.set_mode(Mode.DESIGN)
         while self.ui.mode != Mode.SIMULATION:
             self.ui.user_input()
             self.ui.ui_sleep()
@@ -290,28 +291,31 @@ class BoxEnv(gym.Env):
         elif type == BodyType.MOVING_OBSTACLE:
             body = self.create_moving_obstacle(pos, size, angle=angle)
             # TODO: function instead
-            body.angularDamping = design_data.physics["ang_damping"]
-            body.angularVelocity = design_data.physics["ang_velocity"]
-            body.linearDamping = design_data.physics["lin_damping"]
-            body.linearVelocity = b2Vec2(math.cos(design_data.physics["lin_velocity_angle"]), math.sin(design_data.physics["lin_velocity_angle"])) * design_data.physics["lin_velocity"]
-            body.inertia = design_data.physics["inertia"]
-            body.fixtures[0].density = design_data.physics["density"]
-            body.fixtures[0].friction = design_data.physics["friction"]
+            body.angularDamping = design_data.params["ang_damping"]
+            body.angularVelocity = design_data.params["ang_velocity"]
+            body.linearDamping = design_data.params["lin_damping"]
+            body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
+            body.inertia = design_data.params["inertia"]
+            body.fixtures[0].density = design_data.params["density"]
+            body.fixtures[0].friction = design_data.params["friction"]
         elif type == BodyType.STATIC_ZONE:
             body = self.create_static_zone(pos, size, angle=angle)
         elif type == BodyType.MOVING_ZONE:
             body = self.create_moving_zone(pos, size, angle=angle)
             # TODO: function instead
-            body.angularDamping = design_data.physics["ang_damping"]
-            body.angularVelocity = design_data.physics["ang_velocity"]
-            body.linearDamping = design_data.physics["lin_damping"]
-            body.linearVelocity = b2Vec2(math.cos(design_data.physics["lin_velocity_angle"]), math.sin(design_data.physics["lin_velocity_angle"])) * design_data.physics["lin_velocity"]
-            body.inertia = design_data.physics["inertia"]
-            body.fixtures[0].density = design_data.physics["density"]
-            body.fixtures[0].friction = design_data.physics["friction"]
+            body.angularDamping = design_data.params["ang_damping"]
+            body.angularVelocity = design_data.params["ang_velocity"]
+            body.linearDamping = design_data.params["lin_damping"]
+            body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
+            body.inertia = design_data.params["inertia"]
+            body.fixtures[0].density = design_data.params["density"]
+            body.fixtures[0].friction = design_data.params["friction"]
 
-        body.userData.reward = design_data.reward
-        body.userData.level = design_data.level
+        # body.userData.reward = design_data.reward
+        # body.userData.level = design_data.level
+        
+        body.userData.reward = design_data.params["reward"]
+        body.userData.level = design_data.params["level"]
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key

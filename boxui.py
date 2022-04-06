@@ -1,8 +1,9 @@
 
+import enum
 import json
 import logging
 import math
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from enum import Enum
 from logging import debug, info
 from time import sleep
@@ -10,7 +11,7 @@ from typing import Dict, List
 
 import numpy as np
 import pygame
-from Box2D import b2Vec2
+from Box2D import b2Body, b2Vec2
 
 import boxcolors as color
 from boxdef import BodyShape, BodyType
@@ -21,23 +22,21 @@ DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
 class Mode(Enum):
     NONE = 0
-    WORLD_DESIGN = 1
-    SIMULATION = 2
-    SET_REWARD = 3
-    SET_LEVEL = 4
-    SET_PHYSICS = 5
-    ROTATE = 6
+    DESIGN = 1
+    ROTATE = 2
+    SIMULATION = 3
+    CONFIRMATION = 4 # TODO: confirmation
 
 
 @dataclass
 class ScreenLayout:
-    width: int = 800  # pixels
+    width: int = 1000  # pixels
     height: int = 800
     size: b2Vec2 = b2Vec2(width, height)
     simulation_xshift = 200
     simulation_yshift = 0
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
-    simulation_size: b2Vec2 = b2Vec2(600, height - simulation_yshift)
+    simulation_size: b2Vec2 = b2Vec2(width - simulation_xshift, height - simulation_yshift)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
     board_size: b2Vec2 = b2Vec2(width, height) * 0
     small_font: int = 14
@@ -56,8 +55,6 @@ class DesignData:
     vertices: List[b2Vec2] = field(default_factory=list)
     type: Enum = BodyType.STATIC_OBSTACLE
     color: tuple = field(default=color.STATIC_OBSTACLE)
-    reward: float = 0.0
-    level: int = 0
 
     # body rotation
     rotated: bool = False
@@ -65,10 +62,10 @@ class DesignData:
     initial_angle: float = 0.0
     delta_angle: float = 0.0
 
-    physics: Dict = field(default_factory=dict)
+    params: Dict = field(default_factory=dict)
 
     # indicates which param to currently change
-    physics_param_ix: int = 0
+    params_ix: int = 0
     float_inc: float = 0.1
 
 
@@ -87,7 +84,7 @@ class BoxUI():
         self.design_bodies: List[DesignData] = list()
 
         # setting up design variables
-        self.restore_design_data()
+        self.default_design_data()
 
         # pygame setup
         self.screen = pygame.display.set_mode(
@@ -95,6 +92,8 @@ class BoxUI():
         pygame.display.set_caption('Box Dynamics')
         self.clock = pygame.time.Clock()
         pygame.font.init()  # to render text
+
+        self.commands = list()
 
         # font
         self.font = 'Comic Sans MS'
@@ -105,8 +104,8 @@ class BoxUI():
         # will be updated on runtime based on the real dimensions
         # once the text is rendered
         self.title_surface_height = 0
-        self.design_surface_height = 0
         self.commands_surface_height = 0
+        self.design_surface_height = 0
 
         logging.basicConfig(level=logging.INFO)
         info("BoxUI created")
@@ -139,7 +138,7 @@ class BoxUI():
     def render(self):
         self.screen.fill(color.BACK)
 
-        self.render_world()
+        self.render_back()
 
         # title
         text_font = pygame.font.SysFont(
@@ -153,126 +152,114 @@ class BoxUI():
 
         self.render_commands()
 
+        self.render_world()
+
         if self.mode == Mode.SIMULATION:
             self.render_action()
             self.render_observations()
             self.draw_distances()
-
-        elif self.mode != Mode.SIMULATION and self.mode != Mode.NONE:
+        elif self.mode not in (Mode.SIMULATION, Mode.NONE):
             self.render_design()
 
         pygame.display.flip()
         self.clock.tick(self.target_fps)
         pass
 
-    def restore_design_data(self):
+    def default_design_data(self):
         self.design_data = DesignData()
-        self.design_data.physics = {"lin_velocity": 0.0,
-                                    "lin_velocity_angle": 0.0,
-                                    "ang_velocity": 0.0,
-                                    "friction": 0.0,
-                                    "density": 1.0,
-                                    "inertia": 0.0,
-                                    "lin_damping": 0.0,
-                                    "ang_damping": 0.0}
+        self.design_data.params = {"reward": 0,
+                                   "level": 0.0,
+                                   "lin_velocity": 0.0,
+                                   "lin_velocity_angle": 0.0,
+                                   "ang_velocity": 0.0,
+                                   "density": 1.0,
+                                   "inertia": 0.0,
+                                   "friction": 0.0,
+                                   "lin_damping": 0.0,
+                                   "ang_damping": 0.0}
+
+    def user_confirmation(self) -> bool:
+        # TODO: render confirmation screen
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    return True
 
     def user_input(self):
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 # TODO: quit signal to BoxEnv
-                # TODO: ask for confirmation
+                # TODO: uncomment for confirmation
+                # if self.user_confirmation():
+                # self.quit()
+                self.quit()
+
+            elif event.type == pygame.QUIT:
+                # exit
+                # here no confirmation
                 self.quit()
 
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_DELETE:
                 # abort current changes to body
-                # TODO: ask for confirmation
+                # TODO: ask for confirmation (?)
                 try:
                     self.design_bodies.pop()
                 except IndexError:
                     pass
-                self.restore_design_data()
+                self.default_design_data()
 
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                if self.mode == Mode.WORLD_DESIGN:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     self.design_data.shape = BodyShape.BOX
                     pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_c:
-                if self.mode == Mode.WORLD_DESIGN:
-                    # TODO: circle
-                    self.design_data.shape = BodyShape.CIRCLE
-                pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
-                if self.mode == Mode.WORLD_DESIGN:
-                    print(len(self.design_bodies))
+                if self.mode == Mode.DESIGN:
                     self.dump_design()
-                    self.set_mode(Mode.SIMULATION)
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
-                if self.mode == Mode.WORLD_DESIGN:
+                if self.mode == Mode.DESIGN:
                     self.load_design()
                 pass
             elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
                                                    event.key == pygame.K_RETURN):
-                if self.mode == Mode.WORLD_DESIGN:
+                if self.mode == Mode.DESIGN:
                     # use created world
                     # TODO: check for saving if not saved
                     self.set_mode(Mode.SIMULATION)
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_t:
-                if self.mode == Mode.WORLD_DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     # toggle body type
                     self.toggle_body_type()
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_w:
-                if self.mode == Mode.WORLD_DESIGN:
-                    # reward
-                    self.set_mode(Mode.SET_REWARD)
-                elif self.mode == Mode.SET_REWARD:
-                    # return to world design mode
-                    self.set_mode(Mode.WORLD_DESIGN)
-                pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_v:
-                if self.mode == Mode.WORLD_DESIGN:
-                    # level
-                    self.set_mode(Mode.SET_LEVEL)
-                elif self.mode == Mode.SET_LEVEL:
-                    # return to world design mode
-                    self.set_mode(Mode.WORLD_DESIGN)
-                pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_a:
-                if self.mode == Mode.WORLD_DESIGN:
+                if self.mode == Mode.DESIGN:
                     # angle
                     points_num = len(self.design_data.points)
                     if points_num == 2 and self.design_data.shape == BodyShape.BOX:
                         self.rotate(first=True)
                         self.set_mode(Mode.ROTATE)
                 elif self.mode == Mode.ROTATE:
-                    self.set_mode(Mode.WORLD_DESIGN)
-                pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                if self.mode == Mode.WORLD_DESIGN:
-                    if self.design_data.type == BodyType.MOVING_OBSTACLE or \
-                            self.design_data.type == BodyType.MOVING_ZONE:
-                        self.set_mode(Mode.SET_PHYSICS)
-                elif self.mode == Mode.SET_PHYSICS:
-                    self.set_mode(Mode.WORLD_DESIGN)
+                    self.set_mode(Mode.DESIGN)
                 pass
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_pos = b2Vec2(pygame.mouse.get_pos())
-                if self.mode == Mode.WORLD_DESIGN:
+                if self.mode == Mode.DESIGN:
                     # TODO: check for mouse pos and perform action like select bodies
                     points_num = len(self.design_data.points)
                     if points_num == 0:
                         self.design_data.points.append(mouse_pos)
                     elif points_num == 2:
                         # reset design data
-                        self.restore_design_data()
+                        self.default_design_data()
                 elif self.mode == Mode.ROTATE:
                     self.design_bodies.pop()  # removing old body
                     # adding new updated body
                     self.design_bodies.append(self.design_data)
-                    self.restore_design_data()
-                    self.set_mode(Mode.WORLD_DESIGN)
+                    self.default_design_data()
+                    self.set_mode(Mode.DESIGN)
                 elif self.mode == Mode.SIMULATION:
                     pass
                 # TODO: check for mouse pos and perform action
@@ -281,7 +268,7 @@ class BoxUI():
                 pass
             elif event.type == pygame.MOUSEMOTION:
                 mouse_pos = b2Vec2(pygame.mouse.get_pos())
-                if self.mode == Mode.WORLD_DESIGN:
+                if self.mode == Mode.DESIGN:
                     points_num = len(self.design_data.points)
                     if points_num > 0:
                         # removing old body
@@ -307,50 +294,45 @@ class BoxUI():
                     self.env.manual_mode = not self.env.manual_mode
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
-                if self.mode == Mode.SET_REWARD:
-                    # increase reward by inc
-                    self.design_data.reward += self.design_data.float_inc
-                elif self.mode == Mode.SET_LEVEL:
-                    # increase level by inc
-                    self.design_data.level += 1
-                elif self.mode == Mode.SET_PHYSICS:
-                    # increase reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[
-                        self.design_data.physics_param_ix]] += self.design_data.float_inc
+                if self.mode == Mode.DESIGN:
+                    param_name = list(self.design_data.params)[
+                        self.design_data.params_ix]
+                    if param_name == "level":
+                        self.design_data.params[param_name] += 1
+                    else:
+                        self.design_data.params[param_name] += self.design_data.float_inc
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
-                if self.mode == Mode.SET_REWARD:
-                    # decrease reward by inc
-                    self.design_data.reward -= self.design_data.float_inc
-                elif self.mode == Mode.SET_LEVEL:
-                    # decrease level by inc
-                    self.design_data.level -= 1
-                elif self.mode == Mode.SET_PHYSICS:
-                    # decrease reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[
-                        self.design_data.physics_param_ix]] -= self.design_data.float_inc
+                if self.mode == Mode.DESIGN:
+                    param_name = list(self.design_data.params)[
+                        self.design_data.params_ix]
+                    if param_name == "level":
+                        self.design_data.params[param_name] -= 1
+                    else:
+                        self.design_data.params[param_name] -= self.design_data.float_inc
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
-                if self.mode == Mode.SET_REWARD:
-                    # increase inc by factor 10
-                    self.design_data.float_inc = self.design_data.float_inc * 10
-                elif self.mode == Mode.SET_PHYSICS:
+                if self.mode == Mode.DESIGN:
                     # increase inc by factor 10
                     self.design_data.float_inc = self.design_data.float_inc * 10
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
-                if self.mode == Mode.SET_REWARD:
-                    # decrease inc by factor 10
-                    self.design_data.float_inc = self.design_data.float_inc / 10
-                elif self.mode == Mode.SET_PHYSICS:
+                if self.mode == Mode.DESIGN:
                     # decrease inc by factor 10
                     self.design_data.float_inc = self.design_data.float_inc / 10
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                if self.mode == Mode.SET_PHYSICS:
-                    # toggle physics parameter to change
-                    self.design_data.physics_param_ix = (
-                        self.design_data.physics_param_ix + 1) % len(list(self.design_data.physics))
+                if self.mode == Mode.DESIGN:
+                    # toggle parameter to change
+                    # TODO: shift space to toggle -1
+                    if self.design_data.type == BodyType.MOVING_OBSTACLE or \
+                        self.design_data.type == BodyType.MOVING_ZONE:
+                        self.design_data.params_ix = (
+                            self.design_data.params_ix + 1) % len(list(self.design_data.params))
+                    else:
+                        # TODO: only toggle static bodies params not hardcoded
+                        self.design_data.params_ix = (
+                            self.design_data.params_ix + 1) % 2
                 pass
 
     def rotate(self, first: bool):
@@ -389,7 +371,7 @@ class BoxUI():
         self.design_data.color = self.env.get_data(
             self.design_data.type).color
 
-    def dump_design(self):
+    def dump_design(self, filename="test.json"):
         # db as design bodies since it's just a different
         # format for the same thing
         db = [list(body.__dict__.items()) for body in (self.design_bodies)]
@@ -423,12 +405,16 @@ class BoxUI():
         dump_db = [dict(body) for body in dump_db]
 
         # TODO: better name for json
-        with open("test.json", "w") as f:
+        with open(filename, "w") as f:
             json.dump(dump_db, f)
 
-    def load_design(self):
-        with open("test.json", "r") as f:
-            j = json.load(f)
+    def load_design(self, filename="test.json"):
+        try:
+            with open(filename, "r") as f:
+                j = json.load(f)
+        except FileNotFoundError:
+            info("File not found: {}".format(filename))
+            return
 
         # TODO: append to existing design or overwrite?
         # design_bodies = list()
@@ -488,16 +474,18 @@ class BoxUI():
 
     def render_world(self):
         # Draw the world based on bodies levels
-        bodies_levels = [[b, b.userData.level]
-                         for b in self.env.world.bodies]
-        bodies_levels.sort(key=lambda x: x[1], reverse=False)
+        bodies_levels: List[tuple(b2Body, int)] = self.get_sorted_bodies()
 
         for body, _ in bodies_levels:
+            # skipping border rendering cause not necessary
+            if body.userData.type == BodyType.BORDER:
+                continue
             for fixture in body.fixtures:
                 vertices = [self.__pygame_coord(
                     body.transform * v) for v in fixture.shape.vertices]
                 pygame.draw.polygon(self.screen, body.userData.color, vertices)
 
+    def render_back(self):
         # Filling screen not used by world
         vertices = [(0, 0),
                     (self.layout.simulation_xshift, 0),
@@ -539,9 +527,8 @@ class BoxUI():
 
     def render_design(self, types=BodyType):
         # Draw the world based on bodies levels
-        bodies_levels: List[tuple(DesignData, int)] = [[b, b.level]
-                                                       for b in self.design_bodies]
-        bodies_levels.sort(key=lambda x: x[1], reverse=False)
+        bodies_levels: List[tuple(DesignData, int)
+                            ] = self.get_sorted_bodies(design=True)
 
         for body, _ in bodies_levels:
             if body.type in types:
@@ -558,6 +545,19 @@ class BoxUI():
                         self.screen, body.color, body.points[0], radius)
 
         self.render_design_data()
+
+    def get_sorted_bodies(self, design=False):
+        # TODO: have them already sorted for performance
+        if design:
+            bodies_levels: List[tuple(DesignData, int)] = [[b, b.params["level"]]
+                                                           for b in self.design_bodies]
+            bodies_levels.sort(key=lambda x: x[1], reverse=False)
+        else:
+            bodies_levels = [[b, b.userData.level]
+                             for b in self.env.world.bodies]
+            bodies_levels.sort(key=lambda x: x[1], reverse=False)
+
+        return bodies_levels
 
     def render_design_data(self):
         # rendering design data when user is designin shape
@@ -584,46 +584,56 @@ class BoxUI():
         text_font = pygame.font.SysFont(
             self.font, self.layout.normal_font)
 
-        data = ["Shape: {}".format(self.design_data.shape.name),
-                "Type: {}".format(self.design_data.type.name),
+        data = ["Type: {}".format(self.design_data.type.name),
+                "Shape: {}".format(self.design_data.shape.name),
                 "Angle: {}".format(
-                    round(-360 * self.design_data.delta_angle / (2 * math.pi), 3)),
-                "Reward: {}".format(round(self.design_data.reward, 3)),
-                "Level: {}".format(self.design_data.level),
-                "Parameter increment: {}".format((self.design_data.float_inc))]
+                    round(-360 * self.design_data.delta_angle / (2 * math.pi), 3))]
 
-        for s in data:
+        for ix, s in enumerate(data):
             pos += b2Vec2(0, text_surface.get_height())
-            text_surface = text_font.render(
-                s, True, color.BLACK, color.INFO_BACK)
+            # TODO: not ix hardcoded
+            if self.mode == Mode.ROTATE and ix == 2:
+                text_surface = text_font.render(
+                    s, True, color.BLACK, color.GREEN)
+            else:
+                text_surface = text_font.render(
+                    s, True, color.BLACK, color.INFO_BACK)
             self.screen.blit(text_surface, pos)
+
+        params = list()
+        params.append("Reward: {}".format(
+            round(self.design_data.params["reward"], 3)))
+        params.append("Level: {}".format(self.design_data.params["level"]))
 
         if self.design_data.type == BodyType.MOVING_OBSTACLE or \
                 self.design_data.type == BodyType.MOVING_ZONE:
-            physic_params = ["Velocity: {}".format(round(self.design_data.physics["lin_velocity"], 3)),
-                             "Velocity angle: {}".format(
-                                 round(self.design_data.physics["lin_velocity_angle"], 3)),
-                             "Angular velocity: {}".format(
-                                 round(self.design_data.physics["ang_velocity"], 3)),
-                             "Friction: {}".format(
-                                 round(self.design_data.physics["friction"], 3)),
-                             "Density: {}".format(
-                                 round(self.design_data.physics["density"], 3)),
-                             "Inertia: {}".format(
-                                 round(self.design_data.physics["inertia"], 3)),
-                             "Linear damping: {}".format(
-                                 round(self.design_data.physics["lin_damping"], 3)),
-                             "Angular damping: {}".format(round(self.design_data.physics["ang_damping"], 3))]
+            params.append("Velocity: {}".format(
+                round(self.design_data.params["lin_velocity"], 3)))
+            params.append("Velocity angle: {}".format(
+                round(self.design_data.params["lin_velocity_angle"], 3)))
+            params.append("Angular velocity: {}".format(
+                round(self.design_data.params["ang_velocity"], 3)))
+            params.append("Density: {}".format(
+                round(self.design_data.params["density"], 3)))
+            params.append("Inertia: {}".format(
+                round(self.design_data.params["inertia"], 3)),)
+            params.append("Friction: {}".format(
+                round(self.design_data.params["friction"], 3)))
+            params.append("Linear damping: {}".format(
+                round(self.design_data.params["lin_damping"], 3)))
+            params.append("Angular damping: {}".format(
+                round(self.design_data.params["ang_damping"], 3)))
+            params.append("Increment: {}".format((self.design_data.float_inc)))
 
-            for ix, s in enumerate(physic_params):
-                pos += b2Vec2(0, text_surface.get_height())
-                if ix == self.design_data.physics_param_ix:
-                    text_surface = text_font.render(
-                        s, True, color.BLACK, color.GREEN)
-                else:
-                    text_surface = text_font.render(
-                        s, True, color.BLACK, color.INFO_BACK)
-                self.screen.blit(text_surface, pos)
+        for ix, s in enumerate(params):
+            pos += b2Vec2(0, text_surface.get_height())
+            if self.mode == Mode.DESIGN and ix == self.design_data.params_ix:
+                text_surface = text_font.render(
+                    s, True, color.BLACK, color.GREEN)
+            else:
+                text_surface = text_font.render(
+                    s, True, color.BLACK, color.INFO_BACK)
+            self.screen.blit(text_surface, pos)
         self.design_surface_height = pos.y - design_pos.y + self.border_width * 3
 
     def render_commands(self):
@@ -646,54 +656,8 @@ class BoxUI():
         text_font = pygame.font.SysFont(
             self.font, self.layout.normal_font)
 
-        commands = list()
-        if self.mode == Mode.WORLD_DESIGN:
-            commands = [{"key": "mouse click", "description": "fix point"},
-                        {"key": "R", "description": "rectangle"},
-                        {"key": "C", "description": "circle"},
-                        {"key": "T", "description": "type"},
-                        {"key": "W", "description": "reward"},
-                        {"key": "L", "description": "level"},
-                        {"key": "U", "description": "use"},
-                        {"key": "S", "description": "save"},
-                        {"key": "ESC", "description": "exit"}]
-            if self.design_data.type == BodyType.MOVING_OBSTACLE or \
-                    self.design_data.type == BodyType.MOVING_ZONE:
-                commands.append({"key": "P", "description": "physics"})
-
-            if self.design_data.shape == BodyShape.BOX:
-                commands.append({"key": "A", "description": "rotate"})
-        if self.mode == Mode.ROTATE:
-            commands = [{"key": "A", "description": "finish rotating"},
-                        {"key": "mouse movement", "description": "rotate"},
-                        {"key": "mouse click", "description": "fix point"},
-                        {"key": "ESC", "description": "exit"}]
-        elif self.mode == Mode.SET_REWARD:
-            commands = [{"key": "W", "description": "finish set reward"},
-                        {"key": "UP", "description": "increase reward"},
-                        {"key": "DOWN", "description": "decrease reward"},
-                        {"key": "RIGHT", "description": "increase reward inc"},
-                        {"key": "LEFT", "description": "decrease reward inc"},
-                        {"key": "ESC", "description": "exit"}]
-        elif self.mode == Mode.SET_LEVEL:
-            commands = [{"key": "L", "description": "finish set level"},
-                        {"key": "UP", "description": "increase level"},
-                        {"key": "DOWN", "description": "decrease level"},
-                        {"key": "ESC", "description": "exit"}]
-        elif self.mode == Mode.SET_PHYSICS:
-            commands = [{"key": "P", "description": "finish set physics"},
-                        {"key": "SPACE", "description": "toggle parameter"},
-                        {"key": "UP", "description": "increase parameter"},
-                        {"key": "DOWN", "description": "decrease parameter"},
-                        {"key": "RIGHT", "description": "increase parameter inc"},
-                        {"key": "LEFT", "description": "decrease parameter inc"},
-                        {"key": "ESC", "description": "exit"}]
-        elif self.mode == Mode.SIMULATION:
-            commands = [{"key": "M", "description": "manual"},
-                        {"key": "ESC", "description": "exit"}]
-
-        # pos += b2Vec2(self.border_width, self.border_width)
-        for command in commands:
+        self.set_commands()
+        for command in self.commands:
             pos += b2Vec2(0, text_surface.get_height())
             s = "- {}: {}".format(command["key"], command["description"])
             text_surface = text_font.render(
@@ -701,6 +665,36 @@ class BoxUI():
             self.screen.blit(text_surface, pos)
 
         self.commands_surface_height = pos.y
+
+    def set_commands(self):
+        if self.mode == Mode.DESIGN:
+            self.commands = [{"key": "mouse click", "description": "fix point"},
+                             {"key": "R", "description": "rectangle"},
+                             {"key": "C", "description": "circle"},
+                             {"key": "T", "description": "type"},
+                             {"key": "W", "description": "reward"},
+                             {"key": "V", "description": "level"},
+                             {"key": "U", "description": "use"},
+                             {"key": "S", "description": "save"},
+                             {"key": "L", "description": "load"},
+                             {"key": "SPACE", "description": "toggle parameter"},
+                             {"key": "UP", "description": "increase parameter"},
+                             {"key": "DOWN", "description": "decrease parameter"},
+                             {"key": "RIGHT", "description": "increase parameter inc"},
+                             {"key": "LEFT", "description": "decrease parameter inc"}]
+            if self.design_data.shape == BodyShape.BOX:
+                self.commands.append({"key": "A", "description": "rotate"})
+        elif self.mode == Mode.ROTATE:
+            self.commands = [{"key": "A", "description": "finish rotating"},
+                             {"key": "mouse movement", "description": "rotate"},
+                             {"key": "mouse click", "description": "fix point"}]
+        elif self.mode == Mode.SIMULATION:
+            self.commands = [{"key": "M", "description": "manual"}]
+
+        if self.mode not in (Mode.SIMULATION, Mode.NONE):
+            self.commands.append({"key": "DEL", "description": "delete object"})
+
+        self.commands.append({"key": "ESC", "description": "exit"})
 
     def render_action(self):
         p1 = self.__pygame_coord(self.env.agent_head)
