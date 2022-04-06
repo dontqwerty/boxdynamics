@@ -55,7 +55,7 @@ class DesignData:
     # all four vertices for rectangles
     vertices: List[b2Vec2] = field(default_factory=list)
     type: Enum = BodyType.STATIC_OBSTACLE
-    color: tuple = field(default=color.BROWN)
+    color: tuple = field(default=color.STATIC_OBSTACLE)
     reward: float = 0.0
     level: int = 0
 
@@ -149,7 +149,7 @@ class BoxUI():
         text_surface = text_font.render(
             s, True, color.BLACK, color.INFO_BACK)
         self.title_surface_height = text_surface.get_height()
-        pos = b2Vec2(self.border_width, 0)
+        pos = b2Vec2(self.border_width, self.border_width / 2)
         self.screen.blit(text_surface, pos)
 
         self.render_commands()
@@ -181,63 +181,87 @@ class BoxUI():
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 # TODO: quit signal to BoxEnv
+                # TODO: ask for confirmation
                 self.quit()
 
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_DELETE:
                 # abort current changes to body
+                # TODO: ask for confirmation
                 try:
                     self.design_bodies.pop()
                 except IndexError:
                     pass
                 self.restore_design_data()
 
-            elif self.mode == Mode.WORLD_DESIGN:
-                # TODO: check for delete key and cancel creating
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                if self.mode == Mode.WORLD_DESIGN:
                     self.design_data.shape = BodyShape.BOX
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                    pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                if self.mode == Mode.WORLD_DESIGN:
                     # TODO: circle
                     self.design_data.shape = BodyShape.CIRCLE
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                if self.mode == Mode.WORLD_DESIGN:
                     self.dump_design()
                     self.set_mode(Mode.SIMULATION)
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                if self.mode == Mode.WORLD_DESIGN:
                     self.load_design()
-                    pass
-                elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
-                                                       event.key == pygame.K_RETURN):
+                pass
+            elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
+                                                    event.key == pygame.K_RETURN):
+                if self.mode == Mode.WORLD_DESIGN:
                     # use created world
                     # TODO: check for saving if not saved
                     self.set_mode(Mode.SIMULATION)
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+                if self.mode == Mode.WORLD_DESIGN:
                     # toggle body type
                     self.design_data.type = self.toggle_enum(
                         self.design_data.type, [BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT])
                     self.design_data.color = self.env.get_data(
                         self.design_data.type).color
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_w:
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_w:
+                if self.mode == Mode.WORLD_DESIGN:
                     # reward
                     self.set_mode(Mode.SET_REWARD)
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_v:
+                elif self.mode == Mode.SET_REWARD:
+                    # return to world design mode
+                    self.set_mode(Mode.WORLD_DESIGN)
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_v:
+                if self.mode == Mode.WORLD_DESIGN:
                     # level
                     self.set_mode(Mode.SET_LEVEL)
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_a:
+                elif self.mode == Mode.SET_LEVEL:
+                    # return to world design mode
+                    self.set_mode(Mode.WORLD_DESIGN)
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_a:
+                if self.mode == Mode.WORLD_DESIGN:
                     # angle
                     points_num = len(self.design_data.points)
                     if points_num == 2 and self.design_data.shape == BodyShape.BOX:
                         self.design_data.rotation_begin = True
                         self.set_mode(Mode.ROTATE)
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+                elif self.mode == Mode.ROTATE:
+                    self.set_mode(Mode.WORLD_DESIGN)
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+                if self.mode == Mode.WORLD_DESIGN:
                     if self.design_data.type == BodyType.MOVING_OBSTACLE or \
                             self.design_data.type == BodyType.MOVING_ZONE:
                         self.set_mode(Mode.SET_PHYSICS)
-                elif event.type == pygame.MOUSEBUTTONDOWN:
+                elif self.mode == Mode.SET_PHYSICS:
+                    self.set_mode(Mode.WORLD_DESIGN)
+                pass
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if self.mode == Mode.WORLD_DESIGN:
                     # TODO: check for mouse pos and perform action like select bodies
                     points_num = len(self.design_data.points)
                     if points_num == 0:
@@ -246,7 +270,20 @@ class BoxUI():
                     elif points_num == 2:
                         # reset design data
                         self.restore_design_data()
-                elif event.type == pygame.MOUSEMOTION:
+                elif self.mode == Mode.ROTATE:
+                    self.design_bodies.pop()  # removing old body
+                    # adding new updated body
+                    self.design_bodies.append(self.design_data)
+                    self.restore_design_data()
+                    self.set_mode(Mode.WORLD_DESIGN)
+                elif self.mode == Mode.SIMULATION:
+                    pass
+                # TODO: check for mouse pos and perform action
+                # show body properties when clicked
+                # let user change level
+                pass
+            elif event.type == pygame.MOUSEMOTION:
+                if self.mode == Mode.WORLD_DESIGN:
                     points_num = len(self.design_data.points)
                     if points_num > 0:
                         # mouse motion after one point has been fixed
@@ -268,9 +305,73 @@ class BoxUI():
 
                         # new updated body
                         self.design_bodies.append(self.design_data)
-                    pass
+                elif self.mode == Mode.ROTATE:
+                    mouse_pos = b2Vec2(pygame.mouse.get_pos())
 
-            elif self.mode == Mode.ROTATE:
+                    self.design_data.delta_angle = self.get_angle(
+                        self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
+
+                    # rotating every vertex
+                    for vix, vertex in enumerate(self.design_data.vertices):
+                        distance = (vertex - self.design_data.points[0]).length
+
+                        init_angle = self.get_angle(
+                            self.design_data.points[0], self.design_data.init_vertices[vix])
+
+                        final_angle = init_angle + self.design_data.delta_angle
+                        self.design_data.vertices[vix] = self.design_data.points[0] + (
+                            b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                if self.mode == Mode.SIMULATION:
+                    self.env.manual_mode = not self.env.manual_mode
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
+                if self.mode == Mode.SET_REWARD:
+                    # increase reward by inc
+                    self.design_data.reward += self.design_data.float_inc
+                elif self.mode == Mode.SET_LEVEL:
+                    # increase level by inc
+                    self.design_data.level += 1
+                elif self.mode == Mode.SET_PHYSICS:
+                    # increase reward by inc
+                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] += self.design_data.float_inc
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
+                if self.mode == Mode.SET_REWARD:
+                    # decrease reward by inc
+                    self.design_data.reward -= self.design_data.float_inc
+                elif self.mode == Mode.SET_LEVEL:
+                    # decrease level by inc
+                    self.design_data.level -= 1
+                elif self.mode == Mode.SET_PHYSICS:
+                    # decrease reward by inc
+                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] -= self.design_data.float_inc
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
+                if self.mode == Mode.SET_REWARD:
+                    # increase inc by factor 10
+                    self.design_data.float_inc = self.design_data.float_inc * 10
+                elif self.mode == Mode.SET_PHYSICS:
+                    # increase inc by factor 10
+                    self.design_data.float_inc = self.design_data.float_inc * 10
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
+                if self.mode == Mode.SET_REWARD:
+                    # decrease inc by factor 10
+                    self.design_data.float_inc = self.design_data.float_inc / 10
+                elif self.mode == Mode.SET_PHYSICS:
+                    # decrease inc by factor 10
+                    self.design_data.float_inc = self.design_data.float_inc / 10
+                pass
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                if self.mode == Mode.SET_PHYSICS:
+                    # toggle physics parameter to change
+                    self.design_data.physics_param_ix = (
+                        self.design_data.physics_param_ix + 1) % len(list(self.design_data.physics))
+                pass
+
+            if self.mode == Mode.ROTATE:
                 # TODO: change angle with arrows (like rewards)
                 if self.design_data.rotation_begin:
                     # the user just changed mode to rotate body
@@ -289,105 +390,6 @@ class BoxUI():
                     self.design_data.init_vertices = self.design_data.vertices.copy()
 
                     self.design_data.rotation_begin = False
-
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_a:
-                    self.set_mode(Mode.WORLD_DESIGN)
-
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    self.design_bodies.pop()  # removing old body
-                    # adding new updated body
-                    self.design_bodies.append(self.design_data)
-                    self.restore_design_data()
-                    self.set_mode(Mode.WORLD_DESIGN)
-
-                elif event.type == pygame.MOUSEMOTION:
-                    mouse_pos = b2Vec2(pygame.mouse.get_pos())
-
-                    self.design_data.delta_angle = self.get_angle(
-                        self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
-
-                    # rotating every vertex
-                    for vix, vertex in enumerate(self.design_data.vertices):
-                        distance = (vertex - self.design_data.points[0]).length
-
-                        init_angle = self.get_angle(
-                            self.design_data.points[0], self.design_data.init_vertices[vix])
-
-                        final_angle = init_angle + self.design_data.delta_angle
-                        self.design_data.vertices[vix] = self.design_data.points[0] + (
-                            b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
-
-            elif self.mode == Mode.SET_REWARD:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_w:
-                    # return to world design mode
-                    self.set_mode(Mode.WORLD_DESIGN)
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
-                    # increase reward by inc
-                    self.design_data.reward += self.design_data.float_inc
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
-                    # decrease reward by inc
-                    self.design_data.reward -= self.design_data.float_inc
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
-                    # increase inc by factor 10
-                    self.design_data.float_inc = self.design_data.float_inc * 10
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
-                    # decrease inc by factor 10
-                    self.design_data.float_inc = self.design_data.float_inc / 10
-                    pass
-
-            elif self.mode == Mode.SET_LEVEL:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_v:
-                    # return to world design mode
-                    self.set_mode(Mode.WORLD_DESIGN)
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
-                    # increase level by inc
-                    self.design_data.level += 1
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
-                    # decrease level by inc
-                    self.design_data.level -= 1
-                    pass
-
-            elif self.mode == Mode.SET_PHYSICS:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                    self.set_mode(Mode.WORLD_DESIGN)
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                    # toggle physics parameter to change
-                    self.design_data.physics_param_ix = (
-                        self.design_data.physics_param_ix + 1) % len(list(self.design_data.physics))
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
-                    # increase reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[
-                        self.design_data.physics_param_ix]] += self.design_data.float_inc
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
-                    # decrease reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[
-                        self.design_data.physics_param_ix]] -= self.design_data.float_inc
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
-                    # increase inc by factor 10
-                    self.design_data.float_inc = self.design_data.float_inc * 10
-                    pass
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
-                    # decrease inc by factor 10
-                    self.design_data.float_inc = self.design_data.float_inc / 10
-                    pass
-                pass
-
-            elif self.mode == Mode.SIMULATION:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                    self.env.manual_mode = not self.env.manual_mode
-                    pass
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    # TODO: check for mouse pos and perform action
-                    # show body properties when clicked
-                    # let user change level
-                    pass
 
     def dump_design(self):
         # db as design bodies since it's just a different
@@ -408,7 +410,7 @@ class BoxUI():
                 if isinstance(value, Enum):
                     # appending value of data field
                     dump_db[bix][dix].append(str(value.name))
-                elif isinstance(value, list):
+                elif isinstance(value, list) and all(isinstance(i, b2Vec2) for i in value):
                     # TODO: check if actually all lists contain only b2Vec2 (yes for now)
                     # appending list for values
                     dump_db[bix][dix].append(list())
