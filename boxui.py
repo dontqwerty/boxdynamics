@@ -61,7 +61,6 @@ class DesignData:
 
     # body rotation
     rotated: bool = False
-    rotation_begin: bool = False
     init_vertices: List[b2Vec2] = field(default_factory=list)
     initial_angle: float = 0.0
     delta_angle: float = 0.0
@@ -204,6 +203,7 @@ class BoxUI():
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
                 if self.mode == Mode.WORLD_DESIGN:
+                    print(len(self.design_bodies))
                     self.dump_design()
                     self.set_mode(Mode.SIMULATION)
                 pass
@@ -212,7 +212,7 @@ class BoxUI():
                     self.load_design()
                 pass
             elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
-                                                    event.key == pygame.K_RETURN):
+                                                   event.key == pygame.K_RETURN):
                 if self.mode == Mode.WORLD_DESIGN:
                     # use created world
                     # TODO: check for saving if not saved
@@ -221,10 +221,7 @@ class BoxUI():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_t:
                 if self.mode == Mode.WORLD_DESIGN:
                     # toggle body type
-                    self.design_data.type = self.toggle_enum(
-                        self.design_data.type, [BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT])
-                    self.design_data.color = self.env.get_data(
-                        self.design_data.type).color
+                    self.toggle_body_type()
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_w:
                 if self.mode == Mode.WORLD_DESIGN:
@@ -247,7 +244,7 @@ class BoxUI():
                     # angle
                     points_num = len(self.design_data.points)
                     if points_num == 2 and self.design_data.shape == BodyShape.BOX:
-                        self.design_data.rotation_begin = True
+                        self.rotate(first=True)
                         self.set_mode(Mode.ROTATE)
                 elif self.mode == Mode.ROTATE:
                     self.set_mode(Mode.WORLD_DESIGN)
@@ -261,12 +258,12 @@ class BoxUI():
                     self.set_mode(Mode.WORLD_DESIGN)
                 pass
             elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = b2Vec2(pygame.mouse.get_pos())
                 if self.mode == Mode.WORLD_DESIGN:
                     # TODO: check for mouse pos and perform action like select bodies
                     points_num = len(self.design_data.points)
                     if points_num == 0:
-                        mouse_pos = pygame.mouse.get_pos()
-                        self.design_data.points.append(b2Vec2(mouse_pos))
+                        self.design_data.points.append(mouse_pos)
                     elif points_num == 2:
                         # reset design data
                         self.restore_design_data()
@@ -283,44 +280,27 @@ class BoxUI():
                 # let user change level
                 pass
             elif event.type == pygame.MOUSEMOTION:
+                mouse_pos = b2Vec2(pygame.mouse.get_pos())
                 if self.mode == Mode.WORLD_DESIGN:
                     points_num = len(self.design_data.points)
                     if points_num > 0:
-                        # mouse motion after one point has been fixed
-                        mouse_pos = b2Vec2(pygame.mouse.get_pos())
-
                         # removing old body
                         try:
                             self.design_bodies.remove(self.design_data)
                         except ValueError:
+                            # there where no bodies to remove
                             pass
-
                         if points_num == 2:
                             self.design_data.vertices = self.get_vertices(
                                 self.design_data)
                             # replacing old point with new point on mouse position
                             self.design_data.points.pop()
-
-                        self.design_data.points.append(b2Vec2(mouse_pos))
-
+                        # mouse motion after one point has been fixed
+                        self.design_data.points.append(mouse_pos)
                         # new updated body
                         self.design_bodies.append(self.design_data)
                 elif self.mode == Mode.ROTATE:
-                    mouse_pos = b2Vec2(pygame.mouse.get_pos())
-
-                    self.design_data.delta_angle = self.get_angle(
-                        self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
-
-                    # rotating every vertex
-                    for vix, vertex in enumerate(self.design_data.vertices):
-                        distance = (vertex - self.design_data.points[0]).length
-
-                        init_angle = self.get_angle(
-                            self.design_data.points[0], self.design_data.init_vertices[vix])
-
-                        final_angle = init_angle + self.design_data.delta_angle
-                        self.design_data.vertices[vix] = self.design_data.points[0] + (
-                            b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
+                    self.rotate(first=False)
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
                 if self.mode == Mode.SIMULATION:
@@ -335,7 +315,8 @@ class BoxUI():
                     self.design_data.level += 1
                 elif self.mode == Mode.SET_PHYSICS:
                     # increase reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] += self.design_data.float_inc
+                    self.design_data.physics[list(self.design_data.physics)[
+                        self.design_data.physics_param_ix]] += self.design_data.float_inc
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
                 if self.mode == Mode.SET_REWARD:
@@ -346,7 +327,8 @@ class BoxUI():
                     self.design_data.level -= 1
                 elif self.mode == Mode.SET_PHYSICS:
                     # decrease reward by inc
-                    self.design_data.physics[list(self.design_data.physics)[self.design_data.physics_param_ix]] -= self.design_data.float_inc
+                    self.design_data.physics[list(self.design_data.physics)[
+                        self.design_data.physics_param_ix]] -= self.design_data.float_inc
                 pass
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
                 if self.mode == Mode.SET_REWARD:
@@ -371,25 +353,41 @@ class BoxUI():
                         self.design_data.physics_param_ix + 1) % len(list(self.design_data.physics))
                 pass
 
-            if self.mode == Mode.ROTATE:
-                # TODO: change angle with arrows (like rewards)
-                if self.design_data.rotation_begin:
-                    # the user just changed mode to rotate body
-                    # saving useful info now
+    def rotate(self, first: bool):
+        if first:
+            self.design_data.rotated = True
 
-                    self.design_data.rotated = True
+            # initial mouse position
+            initial_mouse = b2Vec2(pygame.mouse.get_pos())
 
-                    # initial mouse position
-                    initial_mouse = b2Vec2(pygame.mouse.get_pos())
+            # initial angle
+            self.design_data.initial_angle = self.get_angle(
+                self.design_data.points[0], initial_mouse)
 
-                    # initial angle
-                    self.design_data.initial_angle = self.get_angle(
-                        self.design_data.points[0], initial_mouse)
+            # vertices when starting the rotation
+            self.design_data.init_vertices = self.design_data.vertices.copy()
+        else:
+            mouse_pos = b2Vec2(pygame.mouse.get_pos())
 
-                    # vertices when starting the rotation
-                    self.design_data.init_vertices = self.design_data.vertices.copy()
+            self.design_data.delta_angle = self.get_angle(
+                self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
 
-                    self.design_data.rotation_begin = False
+            # rotating every vertex
+            for vix, vertex in enumerate(self.design_data.vertices):
+                distance = (vertex - self.design_data.points[0]).length
+
+                init_angle = self.get_angle(
+                    self.design_data.points[0], self.design_data.init_vertices[vix])
+
+                final_angle = init_angle + self.design_data.delta_angle
+                self.design_data.vertices[vix] = self.design_data.points[0] + (
+                    b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
+
+    def toggle_body_type(self):
+        self.design_data.type = self.toggle_enum(
+            self.design_data.type, [BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT])
+        self.design_data.color = self.env.get_data(
+            self.design_data.type).color
 
     def dump_design(self):
         # db as design bodies since it's just a different
@@ -588,7 +586,8 @@ class BoxUI():
 
         data = ["Shape: {}".format(self.design_data.shape.name),
                 "Type: {}".format(self.design_data.type.name),
-                "Angle: {}".format(round(self.design_data.delta_angle, 3)),
+                "Angle: {}".format(
+                    round(-360 * self.design_data.delta_angle / (2 * math.pi), 3)),
                 "Reward: {}".format(round(self.design_data.reward, 3)),
                 "Level: {}".format(self.design_data.level),
                 "Parameter increment: {}".format((self.design_data.float_inc))]
