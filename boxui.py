@@ -200,46 +200,7 @@ class BoxUI():
                     self.design_data.shape = BodyShape.CIRCLE
                     pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
-                    # TODO: save function
-
-                    a = [list(i.__dict__.items()).copy() for i in (self.design_bodies.copy())]
-
-                    new_design_bodies = list()
-
-                    for bix, body in enumerate(a):
-                        new_design_bodies.append(list())
-                        for dix, data in enumerate(body):
-                            new_design_bodies[bix].append(list())
-
-                            name = a[bix][dix][0]
-                            value = a[bix][dix][1]
-                            # appending name of data field
-                            new_design_bodies[bix][dix].append(name)
-                            # getting actual value of dataclass field
-                            if isinstance(value, Enum):
-                                # appending value of data field
-                                new_design_bodies[bix][dix].append(str(value))
-                            elif isinstance(value, list):
-                                # TODO: check if actually all lists contain only b2Vec2 (yes for now)
-                                # appending list for values
-                                new_design_bodies[bix][dix].append(list())
-                                for vix, v in enumerate(value):
-                                    # appending every value in list
-                                    new_design_bodies[bix][dix][1].append(list(b2Vec2(value[vix].x, value[vix].y)))
-                            else:
-                                # TODO: tuples might be dangerous
-                                new_design_bodies[bix][dix].append(value)
-
-                    new_design_bodies = [dict(i) for i in new_design_bodies]
-
-                    with open("test.json", "w") as f:
-                        json.dump(new_design_bodies, f)
-
-                    a = None
-                    with open("test.json", "r") as f:
-                        a = json.load(f)
-
-                    print(a)
+                    self.dump_design()
 
                     self.set_mode(Mode.SIMULATION)
                     pass
@@ -425,6 +386,59 @@ class BoxUI():
                     # show body properties when clicked
                     # let user change level
                     pass
+
+    def dump_design(self):
+        # db as design bodies since it's just a different
+        # format for the same thing
+        db = [list(body.__dict__.items()) for body in (self.design_bodies)]
+
+        # design bodies to be dumpes as json
+        dump_db = list()
+        for bix, body in enumerate(db):
+            dump_db.append(list())
+            for dix, _ in enumerate(body):
+                dump_db[bix].append(list())
+                name = db[bix][dix][0] # name of dataclass field
+                value = db[bix][dix][1] # value of dataclass field
+                # appending name of data field
+                dump_db[bix][dix].append(name)
+                # getting actual value of dataclass field
+                if isinstance(value, Enum):
+                    # appending value of data field
+                    dump_db[bix][dix].append(str(value))
+                elif isinstance(value, list):
+                    # TODO: check if actually all lists contain only b2Vec2 (yes for now)
+                    # appending list for values
+                    dump_db[bix][dix].append(list())
+                    for vix, v in enumerate(value):
+                        # appending every value in list
+                        dump_db[bix][dix][1].append(list(b2Vec2(value[vix].x, value[vix].y)))
+                else:
+                    # TODO: tuples (and other similar stuff inside DesignData) might be dangerous
+                    dump_db[bix][dix].append(value)
+
+        dump_db = [dict(body) for body in dump_db]
+
+        with open("test.json", "w") as f:
+            json.dump(dump_db, f)
+
+        with open("test.json", "r") as f:
+            j = json.load(f)
+
+        restored_design_data = DesignData()
+        restored_design_data.physics = {"lin_velocity": 0.0,
+                        "lin_velocity_angle": 0.0,
+                        "ang_velocity": 0.0,
+                        "friction": 0.0,
+                        "density": 1.0,
+                        "inertia": 0.0,
+                        "lin_damping": 0.0,
+                        "ang_damping": 0.0}
+
+        # for body in j:
+        #     for data in j:
+        #         print(data)
+        #     pass
 
     def get_angle(self, pivot: b2Vec2, point: b2Vec2):
         delta: b2Vec2 = point - pivot
