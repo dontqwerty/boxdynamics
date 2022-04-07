@@ -25,7 +25,7 @@ class Mode(Enum):
     DESIGN = 1
     ROTATE = 2
     SIMULATION = 3
-    CONFIRMATION = 4 # TODO: confirmation
+    QUIT_CONFIRMATION = 4 # TODO: confirmation
     INPUT_SAVE = 5
     INPUT_LOAD = 6
 
@@ -190,19 +190,7 @@ class BoxUI():
 
     def user_input(self):
         for event in pg.event.get():
-            if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
-                # TODO: quit signal to BoxEnv
-                # TODO: uncomment for confirmation
-                # if self.user_confirmation():
-                # self.quit()
-                self.quit()
-
-            elif event.type == pg.QUIT:
-                # exit
-                # here no confirmation
-                self.quit()
-
-            elif self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE) and event.type == pg.KEYDOWN:
+            if self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE) and event.type == pg.KEYDOWN:
                 if event.key == pg.K_RETURN:
                     if self.mode == Mode.INPUT_SAVE:
                         self.save_design(self.text_input)
@@ -216,6 +204,27 @@ class BoxUI():
                 else:
                     self.text_input += event.unicode
                 pass
+
+            elif event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
+                # TODO: quit signal to BoxEnv
+                # TODO: uncomment for confirmation
+                # if self.user_confirmation():
+                # self.quit()
+                if self.mode == Mode.QUIT_CONFIRMATION:
+                    # not confirmed, back to prev mode
+                    self.set_mode(self.prev_mode)
+                else:
+                    # asking user for confirmation
+                    self.set_mode(Mode.QUIT_CONFIRMATION)
+
+            elif event.type == pg.KEYDOWN and event.key == pg.K_RETURN:
+                if self.mode == Mode.QUIT_CONFIRMATION:
+                    self.quit()
+
+            elif event.type == pg.QUIT:
+                # exit
+                # here no confirmation
+                self.quit()
 
             elif event.type == pg.KEYDOWN and event.key == pg.K_DELETE:
                 # abort current changes to body
@@ -239,12 +248,10 @@ class BoxUI():
                 if self.mode == Mode.DESIGN:
                     self.set_mode(Mode.INPUT_LOAD)
                 pass
-            elif event.type == pg.KEYDOWN and (event.key == pg.K_u or
-                                                   event.key == pg.K_RETURN):
+            elif event.type == pg.KEYDOWN and event.key == pg.K_u:
                 if self.mode == Mode.DESIGN:
                     # use created world
                     # TODO: check for saving if not saved
-                    print("started")
                     self.set_mode(Mode.SIMULATION)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_t:
