@@ -26,6 +26,8 @@ class Mode(Enum):
     ROTATE = 2
     SIMULATION = 3
     CONFIRMATION = 4 # TODO: confirmation
+    INPUT_SAVE = 5
+    INPUT_LOAD = 6
 
 
 @dataclass
@@ -63,7 +65,6 @@ class DesignData:
     delta_angle: float = 0.0
 
     params: Dict = field(default_factory=dict)
-
     # indicates which param to currently change
     params_ix: int = 0
     float_inc: float = 0.1
@@ -107,6 +108,9 @@ class BoxUI():
         self.commands_surface_height = 0
         self.design_surface_height = 0
 
+        # input text from user
+        self.text_input = ""
+
         logging.basicConfig(level=logging.INFO)
         info("BoxUI created")
 
@@ -114,9 +118,6 @@ class BoxUI():
 
     def ui_sleep(self):
         sleep(DESIGN_SLEEP)
-
-    def __destroy(self):
-        pass
 
     def quit(self):
         pg.quit()
@@ -201,6 +202,21 @@ class BoxUI():
                 # here no confirmation
                 self.quit()
 
+            elif self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE) and event.type == pg.KEYDOWN:
+                if event.key == pg.K_RETURN:
+                    if self.mode == Mode.INPUT_SAVE:
+                        self.save_design(self.text_input)
+                    elif self.mode == Mode.INPUT_LOAD:
+                        self.load_design(self.text_input)
+                    self.text_input = ""
+                    self.set_mode(Mode.DESIGN)
+                    # return
+                elif event.key == pg.K_BACKSPACE:
+                    self.text_input = self.text_input[:-1]
+                else:
+                    self.text_input += event.unicode
+                pass
+
             elif event.type == pg.KEYDOWN and event.key == pg.K_DELETE:
                 # abort current changes to body
                 # TODO: ask for confirmation (?)
@@ -210,23 +226,25 @@ class BoxUI():
                     pass
                 self.default_design_data()
 
-            if event.type == pg.KEYDOWN and event.key == pg.K_c:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_c:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     self.design_data.shape = BodyShape.BOX
                     pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_s:
                 if self.mode == Mode.DESIGN:
-                    self.dump_design(filename="design_1.json")
+                    # asking to input file name
+                    self.set_mode(Mode.INPUT_SAVE)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_l:
                 if self.mode == Mode.DESIGN:
-                    self.load_design(filename="design_0.json")
+                    self.set_mode(Mode.INPUT_LOAD)
                 pass
             elif event.type == pg.KEYDOWN and (event.key == pg.K_u or
                                                    event.key == pg.K_RETURN):
                 if self.mode == Mode.DESIGN:
                     # use created world
                     # TODO: check for saving if not saved
+                    print("started")
                     self.set_mode(Mode.SIMULATION)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_t:
@@ -371,7 +389,7 @@ class BoxUI():
         self.design_data.color = self.env.get_data(
             self.design_data.type).color
 
-    def dump_design(self, filename="test.json"):
+    def save_design(self, filename="test.json"):
         # db as design bodies since it's just a different
         # format for the same thing
         db = [list(body.__dict__.items()) for body in (self.design_bodies)]
@@ -405,8 +423,14 @@ class BoxUI():
         dump_db = [dict(body) for body in dump_db]
 
         # TODO: better name for json
-        with open(filename, "w") as f:
-            json.dump(dump_db, f)
+        try:
+            with open(filename, "w") as f:
+                json.dump(dump_db, f)
+        except FileNotFoundError:
+            info("File not found: {}".format(filename))
+            return
+
+        info("Saved design {}".format(filename))
 
     def load_design(self, filename="test.json"):
         try:
@@ -427,6 +451,8 @@ class BoxUI():
             design.init_vertices = [b2Vec2(p) for p in design.init_vertices]
             # design_bodies.append(design)
             self.design_bodies.append(design)
+
+        info("Loaded design {}".format(filename))
 
     def get_angle(self, pivot: b2Vec2, point: b2Vec2):
         delta: b2Vec2 = point - pivot
@@ -668,6 +694,7 @@ class BoxUI():
         self.commands_surface_height = pos.y
 
     def set_commands(self):
+        self.commands.clear()
         if self.mode == Mode.DESIGN:
             self.commands = [{"key": "mouse click", "description": "fix point"},
                              {"key": "R", "description": "rectangle"},
