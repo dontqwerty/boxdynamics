@@ -25,9 +25,10 @@ class Mode(Enum):
     DESIGN = 1
     ROTATE = 2
     SIMULATION = 3
-    QUIT_CONFIRMATION = 4 # TODO: confirmation
-    INPUT_SAVE = 5
-    INPUT_LOAD = 6
+    INPUT_SAVE = 4
+    INPUT_LOAD = 5
+    QUIT_CONFIRMATION = 6
+    USE_CONFIRMATION = 7
 
 
 @dataclass
@@ -127,7 +128,7 @@ class BoxUI():
     def set_mode(self, mode: Mode):
         self.prev_mode = self.mode
         self.mode = mode
-        debug("New mode {}, old mode {}".format(self.mode, self.prev_mode))
+        info("Old mode {}, new mode {}".format(self.prev_mode, self.mode))
 
     def shape_design(self):
         if self.design_data.shape == BodyShape.BOX:
@@ -179,15 +180,6 @@ class BoxUI():
                                    "lin_damping": 0.0,
                                    "ang_damping": 0.0}
 
-    def user_confirmation(self) -> bool:
-        # TODO: render confirmation screen
-        while True:
-            for event in pg.event.get():
-                if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
-                    return False
-                elif event.type == pg.KEYDOWN and event.key == pg.K_RETURN:
-                    return True
-
     def user_input(self):
         for event in pg.event.get():
             if self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE) and event.type == pg.KEYDOWN:
@@ -197,10 +189,13 @@ class BoxUI():
                     elif self.mode == Mode.INPUT_LOAD:
                         self.load_design(self.text_input)
                     self.text_input = ""
-                    self.set_mode(Mode.DESIGN)
+                    self.set_mode(self.prev_mode)
                     # return
                 elif event.key == pg.K_BACKSPACE:
                     self.text_input = self.text_input[:-1]
+                elif event.key == pg.K_ESCAPE:
+                    self.text_input = ""
+                    self.set_mode(self.prev_mode)
                 else:
                     self.text_input += event.unicode
                 pass
@@ -210,7 +205,7 @@ class BoxUI():
                 # TODO: uncomment for confirmation
                 # if self.user_confirmation():
                 # self.quit()
-                if self.mode == Mode.QUIT_CONFIRMATION:
+                if self.mode in (Mode.QUIT_CONFIRMATION, Mode.USE_CONFIRMATION):
                     # not confirmed, back to prev mode
                     self.set_mode(self.prev_mode)
                 else:
@@ -219,7 +214,11 @@ class BoxUI():
 
             elif event.type == pg.KEYDOWN and event.key == pg.K_RETURN:
                 if self.mode == Mode.QUIT_CONFIRMATION:
+                    # quit confirmed
                     self.quit()
+                elif self.mode == Mode.USE_CONFIRMATION:
+                    # use confirmed
+                    self.set_mode(Mode.SIMULATION)
 
             elif event.type == pg.QUIT:
                 # exit
@@ -240,19 +239,18 @@ class BoxUI():
                     self.design_data.shape = BodyShape.BOX
                     pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_s:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     # asking to input file name
                     self.set_mode(Mode.INPUT_SAVE)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_l:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     self.set_mode(Mode.INPUT_LOAD)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_u:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     # use created world
-                    # TODO: check for saving if not saved
-                    self.set_mode(Mode.SIMULATION)
+                    self.set_mode(Mode.USE_CONFIRMATION)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_t:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
