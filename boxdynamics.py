@@ -6,7 +6,7 @@ from typing import List
 
 import gym
 import numpy as np
-import pygame
+import pygame as pg
 from Box2D import (b2Body, b2Contact, b2ContactListener, b2Fixture,
                    b2PolygonShape, b2RayCastCallback, b2Vec2, b2World)
 
@@ -212,7 +212,7 @@ class BoxEnv(gym.Env):
         self.action = b2Vec2(0, 0)
 
         if self.manual_mode:
-            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            mouse_pos = b2Vec2(pg.mouse.get_pos())
             self.action = self.__world_coord(
                 mouse_pos) - self.agent_body.position
         elif action is not None:

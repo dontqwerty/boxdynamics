@@ -10,7 +10,7 @@ from time import sleep
 from typing import Dict, List
 
 import numpy as np
-import pygame
+import pygame as pg
 from Box2D import b2Body, b2Vec2
 
 import boxcolors as color
@@ -86,12 +86,12 @@ class BoxUI():
         # setting up design variables
         self.default_design_data()
 
-        # pygame setup
-        self.screen = pygame.display.set_mode(
+        # pg setup
+        self.screen = pg.display.set_mode(
             (self.layout.width, self.layout.height), 0, 32)
-        pygame.display.set_caption('Box Dynamics')
-        self.clock = pygame.time.Clock()
-        pygame.font.init()  # to render text
+        pg.display.set_caption('Box Dynamics')
+        self.clock = pg.time.Clock()
+        pg.font.init()  # to render text
 
         self.commands = list()
 
@@ -119,7 +119,7 @@ class BoxUI():
         pass
 
     def quit(self):
-        pygame.quit()
+        pg.quit()
         # TODO: signal quitting to BoxEnv
         exit()
 
@@ -141,7 +141,7 @@ class BoxUI():
         self.render_back()
 
         # title
-        text_font = pygame.font.SysFont(
+        text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
         s = "{}".format(self.mode.name)
         text_surface = text_font.render(
@@ -161,7 +161,7 @@ class BoxUI():
         elif self.mode not in (Mode.SIMULATION, Mode.NONE):
             self.render_design()
 
-        pygame.display.flip()
+        pg.display.flip()
         self.clock.tick(self.target_fps)
         pass
 
@@ -181,27 +181,27 @@ class BoxUI():
     def user_confirmation(self) -> bool:
         # TODO: render confirmation screen
         while True:
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            for event in pg.event.get():
+                if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
                     return False
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                elif event.type == pg.KEYDOWN and event.key == pg.K_RETURN:
                     return True
 
     def user_input(self):
-        for event in pygame.event.get():
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        for event in pg.event.get():
+            if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
                 # TODO: quit signal to BoxEnv
                 # TODO: uncomment for confirmation
                 # if self.user_confirmation():
                 # self.quit()
                 self.quit()
 
-            elif event.type == pygame.QUIT:
+            elif event.type == pg.QUIT:
                 # exit
                 # here no confirmation
                 self.quit()
 
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_DELETE:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_DELETE:
                 # abort current changes to body
                 # TODO: ask for confirmation (?)
                 try:
@@ -210,31 +210,31 @@ class BoxUI():
                     pass
                 self.default_design_data()
 
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+            if event.type == pg.KEYDOWN and event.key == pg.K_c:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     self.design_data.shape = BodyShape.BOX
                     pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_s:
                 if self.mode == Mode.DESIGN:
-                    self.dump_design()
+                    self.dump_design(filename="design_1.json")
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_l:
                 if self.mode == Mode.DESIGN:
-                    self.load_design()
+                    self.load_design(filename="design_0.json")
                 pass
-            elif event.type == pygame.KEYDOWN and (event.key == pygame.K_u or
-                                                   event.key == pygame.K_RETURN):
+            elif event.type == pg.KEYDOWN and (event.key == pg.K_u or
+                                                   event.key == pg.K_RETURN):
                 if self.mode == Mode.DESIGN:
                     # use created world
                     # TODO: check for saving if not saved
                     self.set_mode(Mode.SIMULATION)
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_t:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     # toggle body type
                     self.toggle_body_type()
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_a:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_a:
                 if self.mode == Mode.DESIGN:
                     # angle
                     points_num = len(self.design_data.points)
@@ -244,8 +244,8 @@ class BoxUI():
                 elif self.mode == Mode.ROTATE:
                     self.set_mode(Mode.DESIGN)
                 pass
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            elif event.type == pg.MOUSEBUTTONDOWN:
+                mouse_pos = b2Vec2(pg.mouse.get_pos())
                 if self.mode == Mode.DESIGN:
                     # TODO: check for mouse pos and perform action like select bodies
                     points_num = len(self.design_data.points)
@@ -266,8 +266,8 @@ class BoxUI():
                 # show body properties when clicked
                 # let user change level
                 pass
-            elif event.type == pygame.MOUSEMOTION:
-                mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            elif event.type == pg.MOUSEMOTION:
+                mouse_pos = b2Vec2(pg.mouse.get_pos())
                 if self.mode == Mode.DESIGN:
                     points_num = len(self.design_data.points)
                     if points_num > 0:
@@ -289,11 +289,11 @@ class BoxUI():
                 elif self.mode == Mode.ROTATE:
                     self.rotate(first=False)
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_m:
                 if self.mode == Mode.SIMULATION:
                     self.env.manual_mode = not self.env.manual_mode
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_UP:
                 if self.mode == Mode.DESIGN:
                     param_name = list(self.design_data.params)[
                         self.design_data.params_ix]
@@ -302,7 +302,7 @@ class BoxUI():
                     else:
                         self.design_data.params[param_name] += self.design_data.float_inc
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_DOWN:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_DOWN:
                 if self.mode == Mode.DESIGN:
                     param_name = list(self.design_data.params)[
                         self.design_data.params_ix]
@@ -311,17 +311,17 @@ class BoxUI():
                     else:
                         self.design_data.params[param_name] -= self.design_data.float_inc
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_RIGHT:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_RIGHT:
                 if self.mode == Mode.DESIGN:
                     # increase inc by factor 10
                     self.design_data.float_inc = self.design_data.float_inc * 10
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_LEFT:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_LEFT:
                 if self.mode == Mode.DESIGN:
                     # decrease inc by factor 10
                     self.design_data.float_inc = self.design_data.float_inc / 10
                 pass
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+            elif event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
                 if self.mode == Mode.DESIGN:
                     # toggle parameter to change
                     # TODO: shift space to toggle -1
@@ -340,7 +340,7 @@ class BoxUI():
             self.design_data.rotated = True
 
             # initial mouse position
-            initial_mouse = b2Vec2(pygame.mouse.get_pos())
+            initial_mouse = b2Vec2(pg.mouse.get_pos())
 
             # initial angle
             self.design_data.initial_angle = self.get_angle(
@@ -349,7 +349,7 @@ class BoxUI():
             # vertices when starting the rotation
             self.design_data.init_vertices = self.design_data.vertices.copy()
         else:
-            mouse_pos = b2Vec2(pygame.mouse.get_pos())
+            mouse_pos = b2Vec2(pg.mouse.get_pos())
 
             self.design_data.delta_angle = self.get_angle(
                 self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
@@ -481,9 +481,9 @@ class BoxUI():
             if body.userData.type == BodyType.BORDER:
                 continue
             for fixture in body.fixtures:
-                vertices = [self.__pygame_coord(
+                vertices = [self.__pg_coord(
                     body.transform * v) for v in fixture.shape.vertices]
-                pygame.draw.polygon(self.screen, body.userData.color, vertices)
+                pg.draw.polygon(self.screen, body.userData.color, vertices)
 
     def render_back(self):
         # Filling screen not used by world
@@ -491,29 +491,29 @@ class BoxUI():
                     (self.layout.simulation_xshift, 0),
                     (self.layout.simulation_xshift, self.layout.height),
                     (0, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
 
         vertices = [(0, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.simulation_yshift),
                     (0, self.layout.simulation_yshift)]
-        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
 
         vertices = [(self.layout.simulation_pos.x + self.layout.simulation_size.x, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.height),
                     (self.layout.simulation_pos.x + self.layout.simulation_size.x, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
 
         vertices = [(0, self.layout.simulation_pos.y + self.layout.simulation_size.y),
                     (self.layout.width, self.layout.simulation_pos.y +
                      self.layout.simulation_size.y),
                     (self.layout.width, self.layout.height),
                     (0, self.layout.height)]
-        pygame.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
 
     def render_simulation_data(self):
-        # text_font = pygame.font.SysFont(self.font, self.font_size)
+        # text_font = pg.font.SysFont(self.font, self.font_size)
 
         # # fps
         # fps = round(self.clock.get_fps())
@@ -534,14 +534,14 @@ class BoxUI():
             if body.type in types:
                 if body.shape == BodyShape.BOX:
                     try:
-                        pygame.draw.polygon(
+                        pg.draw.polygon(
                             self.screen, body.color, body.vertices)
                     except ValueError:
                         # wait another cycle for the vertices to be there
                         pass
                 elif body.shape == BodyShape.CIRCLE:
                     radius = (body.points[0] - body.points[1]).length
-                    pygame.draw.circle(
+                    pg.draw.circle(
                         self.screen, body.color, body.points[0], radius)
 
         self.render_design_data()
@@ -561,15 +561,15 @@ class BoxUI():
 
     def render_design_data(self):
         # rendering design data when user is designin shape
-        text_font = pygame.font.SysFont(
+        text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
 
         design_pos = b2Vec2(
             0, self.commands_surface_height + self.border_width * 3)
         pos = design_pos.copy()
 
-        pygame.draw.rect(self.screen, color.BLACK,
-                         pygame.Rect(pos.x - self.border_width,
+        pg.draw.rect(self.screen, color.BLACK,
+                         pg.Rect(pos.x - self.border_width,
                                      pos.y,
                                      self.layout.simulation_xshift + self.border_width * 2,
                                      self.design_surface_height), width=self.border_width)
@@ -581,7 +581,7 @@ class BoxUI():
             s, True, color.BLACK, color.INFO_BACK)
         self.screen.blit(text_surface, pos)
 
-        text_font = pygame.font.SysFont(
+        text_font = pg.font.SysFont(
             self.font, self.layout.normal_font)
 
         data = ["Type: {}".format(self.design_data.type.name),
@@ -603,7 +603,7 @@ class BoxUI():
         params = list()
         params.append("Reward: {}".format(
             round(self.design_data.params["reward"], 3)))
-        params.append("Level: {}".format(self.design_data.params["level"]))
+        params.append("Level: {}".format(round(self.design_data.params["level"])))
 
         if self.design_data.type == BodyType.MOVING_OBSTACLE or \
                 self.design_data.type == BodyType.MOVING_ZONE:
@@ -623,7 +623,8 @@ class BoxUI():
                 round(self.design_data.params["lin_damping"], 3)))
             params.append("Angular damping: {}".format(
                 round(self.design_data.params["ang_damping"], 3)))
-            params.append("Increment: {}".format((self.design_data.float_inc)))
+
+        params.append("Increment: {}".format((self.design_data.float_inc)))
 
         for ix, s in enumerate(params):
             pos += b2Vec2(0, text_surface.get_height())
@@ -638,13 +639,13 @@ class BoxUI():
 
     def render_commands(self):
         pos = b2Vec2(0, self.title_surface_height + self.border_width)
-        pygame.draw.rect(self.screen, color.BLACK,
-                         pygame.Rect(pos.x - self.border_width,
+        pg.draw.rect(self.screen, color.BLACK,
+                         pg.Rect(pos.x - self.border_width,
                                      pos.y,
                                      self.layout.simulation_xshift + self.border_width * 2,
                                      self.commands_surface_height), width=self.border_width)
 
-        text_font = pygame.font.SysFont(
+        text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
 
         # title
@@ -653,7 +654,7 @@ class BoxUI():
             "COMMANDS", True, color.BLACK, color.INFO_BACK)
         self.screen.blit(text_surface, pos)
 
-        text_font = pygame.font.SysFont(
+        text_font = pg.font.SysFont(
             self.font, self.layout.normal_font)
 
         self.set_commands()
@@ -672,8 +673,6 @@ class BoxUI():
                              {"key": "R", "description": "rectangle"},
                              {"key": "C", "description": "circle"},
                              {"key": "T", "description": "type"},
-                             {"key": "W", "description": "reward"},
-                             {"key": "V", "description": "level"},
                              {"key": "U", "description": "use"},
                              {"key": "S", "description": "save"},
                              {"key": "L", "description": "load"},
@@ -697,13 +696,13 @@ class BoxUI():
         self.commands.append({"key": "ESC", "description": "exit"})
 
     def render_action(self):
-        p1 = self.__pygame_coord(self.env.agent_head)
-        p2 = self.__pygame_coord(self.env.agent_head + self.env.action)
+        p1 = self.__pg_coord(self.env.agent_head)
+        p2 = self.__pg_coord(self.env.agent_head + self.env.action)
 
-        pygame.draw.line(self.screen, color.ACTION, p1, p2)
+        pg.draw.line(self.screen, color.ACTION, p1, p2)
 
     def draw_distances(self):
-        text_font = pygame.font.SysFont(
+        text_font = pg.font.SysFont(
             self.font, self.layout.small_font)
 
         # drawing distance text
@@ -713,23 +712,23 @@ class BoxUI():
             if oix % freq == 0 and observation.valid:
                 distance = round(observation.distance, 1)
 
-                text_point = self.__pygame_coord(
+                text_point = self.__pg_coord(
                     self.env.agent_head + (observation.intersection - self.env.agent_head) / 2)
                 text_surface = text_font.render(
                     str(distance), False, color.BLACK, color.WHITE)
                 self.screen.blit(text_surface, text_point)
 
     def render_observations(self):
-        start_point = self.__pygame_coord(self.env.agent_head)
+        start_point = self.__pg_coord(self.env.agent_head)
         for observation in self.env.data:
             if observation.valid:
-                end_point = self.__pygame_coord(observation.intersection)
+                end_point = self.__pg_coord(observation.intersection)
 
                 # drawing observation vectors
-                pygame.draw.line(self.screen, observation.body.userData.color,
+                pg.draw.line(self.screen, observation.body.userData.color,
                                  start_point, end_point)
                 # drawing intersection points
-                pygame.draw.circle(
+                pg.draw.circle(
                     self.screen, color.INTERSECTION, end_point, 3)
 
     def get_vertices(self, body: DesignData):
@@ -762,8 +761,8 @@ class BoxUI():
 
         return [p1, p2, p3, p4]
 
-    # transform point in world coordinates to point in pygame coordinates
-    def __pygame_coord(self, point):
+    # transform point in world coordinates to point in pg coordinates
+    def __pg_coord(self, point):
         point = b2Vec2(point.x * self.ppm, (self.env.world_height -
                        point.y) * self.ppm) + self.layout.simulation_pos
         return point
