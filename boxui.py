@@ -1,7 +1,6 @@
 import json
 import logging
 import math
-import random
 from dataclasses import dataclass, field
 from enum import Enum
 from logging import debug, info
@@ -195,49 +194,26 @@ class BoxUI():
         text_font = pg.font.SysFont(
             self.font, self.layout.normal_font)
 
-        # text
-        pos: b2Vec2 = self.layout.popup_pos + \
-            (self.layout.popup_size - self.popup_msg_size) / 2
-        s = "ENTER NAME"
-        text_surface = text_font.render(
-            s, True, color.BLACK, color.INFO_BACK)
-        self.popup_msg_size = b2Vec2(text_surface.get_size())
-        self.screen.blit(text_surface, pos)
-
-        pos += b2Vec2(text_surface.get_width() / 4, text_surface.get_height())
-        s = self.text_input
-        text_surface = text_font.render(
-            s, True, color.BLACK, color.INFO_BACK)
-        self.popup_msg_size.y += text_surface.get_height()
-        b2Vec2(text_surface.get_size())
-        self.screen.blit(text_surface, pos)
+        # # title
+        # pos += b2Vec2(self.border_width, self.border_width)
+        # s = "DESIGN DATA"
+        # text_surface = text_font.render(
+        #     s, True, color.BLACK, color.INFO_BACK)
+        # self.screen.blit(text_surface, pos)
 
     def default_design_data(self):
         self.design_data = DesignData()
-        # self.design_data.params = {"type": BodyType.STATIC_OBSTACLE,
-        #                            "reward": 0.0,
-        #                            "level": 0,
-        #                            "lin_velocity": 0.0,
-        #                            "lin_velocity_angle": 0.0,
-        #                            "ang_velocity": 0.0,
-        #                            "density": 1.0,
-        #                            "inertia": 0.0,
-        #                            "friction": 0.0,
-        #                            "lin_damping": 0.0,
-        #                            "ang_damping": 0.0}
-
-        types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE, BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
-        self.design_data.params = {"type": random.choice(types),
-                                   "reward": random.uniform(-1, 1),
+        self.design_data.params = {"type": BodyType.STATIC_OBSTACLE,
+                                   "reward": 0.0,
                                    "level": 0,
-                                   "lin_velocity": random.uniform(0, 10),
-                                   "lin_velocity_angle": random.uniform(0, 2*math.pi),
-                                   "ang_velocity": random.uniform(0, 10),
-                                   "density": 0.5,
-                                   "inertia": 0,
-                                   "friction": random.uniform(0, 0.001),
-                                   "lin_damping": random.uniform(0, 0.001),
-                                   "ang_damping": random.uniform(0, 0.001)}
+                                   "lin_velocity": 0.0,
+                                   "lin_velocity_angle": 0.0,
+                                   "ang_velocity": 0.0,
+                                   "density": 1.0,
+                                   "inertia": 0.0,
+                                   "friction": 0.0,
+                                   "lin_damping": 0.0,
+                                   "ang_damping": 0.0}
 
     def user_input(self):
         for event in pg.event.get():
@@ -293,11 +269,11 @@ class BoxUI():
                     pass
                 self.default_design_data()
 
-            # elif event.type == pg.KEYDOWN and event.key == pg.K_c:
-            #     if self.mode in (Mode.DESIGN, Mode.ROTATE):
-            #         # TODO: toggle shape
-            #         self.design_data.shape = BodyShape.BOX
-            #         pass
+            elif event.type == pg.KEYDOWN and event.key == pg.K_c:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
+                    # TODO: toggle shape
+                    self.design_data.shape = BodyShape.BOX
+                    pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_s:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     # asking to input file name
@@ -414,7 +390,7 @@ class BoxUI():
                     else:
                         # TODO: only toggle static bodies params not hardcoded
                         self.design_data.params_ix = (
-                            self.design_data.params_ix + 1) % 3
+                            self.design_data.params_ix + 1) % 2
                 pass
 
     def rotate(self, first: bool):
@@ -511,7 +487,7 @@ class BoxUI():
             design.shape = BodyShape[design.shape]
             design.points = [b2Vec2(p) for p in design.points]
             design.vertices = [b2Vec2(p) for p in design.vertices]
-            # design.type = BodyType[design.type]
+            design.type = BodyType[design.type]
             design.init_vertices = [b2Vec2(p) for p in design.init_vertices]
             # design_bodies.append(design)
             self.design_bodies.append(design)
@@ -618,23 +594,24 @@ class BoxUI():
         # self.screen.blit(text_surface, fps_point)
         pass
 
-    def render_design(self):
+    def render_design(self, types=BodyType):
         # Draw the world based on bodies levels
         bodies_levels: List[tuple(DesignData, int)
                             ] = self.get_sorted_bodies(design=True)
 
         for body, _ in bodies_levels:
-            if body.shape == BodyShape.BOX:
-                try:
-                    pg.draw.polygon(
-                        self.screen, body.color, body.vertices)
-                except ValueError:
-                    # wait another cycle for the vertices to be there
-                    pass
-            elif body.shape == BodyShape.CIRCLE:
-                radius = (body.points[0] - body.points[1]).length
-                pg.draw.circle(
-                    self.screen, body.color, body.points[0], radius)
+            if body.params["type"] in types:
+                if body.shape == BodyShape.BOX:
+                    try:
+                        pg.draw.polygon(
+                            self.screen, body.color, body.vertices)
+                    except ValueError:
+                        # wait another cycle for the vertices to be there
+                        pass
+                elif body.shape == BodyShape.CIRCLE:
+                    radius = (body.points[0] - body.points[1]).length
+                    pg.draw.circle(
+                        self.screen, body.color, body.points[0], radius)
 
         self.render_design_data()
 
