@@ -250,6 +250,9 @@ class BoxEnv(gym.Env):
 
         self.ui.user_input()
 
+        if self.agent_body.userData.contact_bodies:
+            print([b.userData.type.name for b in self.agent_body.userData.contact_bodies])
+
         return self.state, step_reward, done, info
 
     def render(self):
@@ -271,9 +274,12 @@ class BoxEnv(gym.Env):
     def __create_from_design_data(self):
         for design in self.ui.design_bodies:
             points = [self.__world_coord(point) for point in design.vertices]
-
-            line1 = get_line_eq(points[0], points[2])
-            line2 = get_line_eq(points[1], points[3])
+            try:
+                line1 = get_line_eq(points[0], points[2])
+                line2 = get_line_eq(points[1], points[3])
+            except IndexError:
+                # the body is a single point (?)
+                continue
             pos = get_intersection(line1, line2)
             width = (points[0] - points[1]).length / 2
             height = (points[1] - points[2]).length / 2
