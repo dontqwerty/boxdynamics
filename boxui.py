@@ -258,7 +258,7 @@ class BoxUI():
 
         return design_data
 
-    def set_design_data(self, set_type=DEFAULT):
+    def set_design_data(self, set_type=SetType.DEFAULT):
         design_data = DesignData()
         if set_type == SetType.DEFAULT:
             design_data.params = {"type": BodyType.STATIC_OBSTACLE,
