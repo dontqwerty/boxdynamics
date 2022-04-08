@@ -316,16 +316,8 @@ class BoxUI():
             elif event.type == pg.KEYDOWN and event.key == pg.K_m:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     # moving body
-                    points_num = len(self.design_data.points)
-                    if points_num == 2:
-                        self.prev_mouse_pos = b2Vec2(pg.mouse.get_pos())
-                        self.set_mode(Mode.MOVE)
+                    self.move(first=True)
                 elif self.mode == Mode.MOVE:
-                    print("new:" + str(self.design_data.vertices))
-                    self.design_data.points[0] = self.design_data.vertices[0]
-                    self.design_data.points[1] = self.design_data.vertices[2]
-                    self.design_data.init_vertices = self.design_data.vertices.copy()
-                    self.design_data.delta_angle = 0
                     self.set_mode(Mode.DESIGN)
                 elif self.mode == Mode.SIMULATION:
                     self.env.manual_mode = not self.env.manual_mode
@@ -342,83 +334,35 @@ class BoxUI():
                     self.set_mode(Mode.DESIGN)
                 pass
             elif event.type == pg.MOUSEBUTTONDOWN:
-                mouse_pos = b2Vec2(pg.mouse.get_pos())
                 if self.mode == Mode.DESIGN:
-                    # TODO: check for mouse pos and perform action like select bodies
-                    points_num = len(self.design_data.points)
-                    if points_num == 0:
-                        self.design_data.points.append(mouse_pos)
-                    elif points_num == 2:
-                        # reset design data
-                        self.default_design_data()
+                    self.set_points(from_design=True)
                 elif self.mode in (Mode.ROTATE, Mode.MOVE):
-                    self.design_bodies.pop()  # removing old body
-                    # adding new updated body
-                    self.design_bodies.append(self.design_data)
-                    self.default_design_data()
+                    self.set_points(from_design=False)
                     self.set_mode(Mode.DESIGN)
                 elif self.mode == Mode.SIMULATION:
+                    # TODO: check for mouse pos and perform action
+                    # show body properties when clicked
+                    # let user change level
                     pass
-                # TODO: check for mouse pos and perform action
-                # show body properties when clicked
-                # let user change level
                 pass
             elif event.type == pg.MOUSEMOTION:
-                mouse_pos = b2Vec2(pg.mouse.get_pos())
                 if self.mode == Mode.DESIGN:
-                    points_num = len(self.design_data.points)
-                    if points_num > 0:
-                        # removing old body
-                        try:
-                            self.design_bodies.remove(self.design_data)
-                        except ValueError:
-                            # there where no bodies to remove
-                            pass
-                        if points_num == 2:
-                            self.design_data.vertices = self.get_vertices(
-                                self.design_data)
-                            # replacing old point with new point on mouse position
-                            self.design_data.points.pop()
-                        # mouse motion after one point has been fixed
-                        self.design_data.points.append(mouse_pos)
-                        # new updated body
-                        self.design_bodies.append(self.design_data)
-                        if self.prev_mode == Mode.MOVE:
-                            print("NEW:" + str(self.design_data.vertices))
+                    self.scale()
                 elif self.mode == Mode.ROTATE:
                     self.rotate(first=False)
                 elif self.mode == Mode.MOVE:
-                    delta_mouse = mouse_pos - self.prev_mouse_pos
-                    for point in self.design_data.vertices:
-                        point += delta_mouse
-                    # self.design_data.points[0] = self.design_data.vertices[0]
-                    # self.design_data.points[1] = self.design_data.vertices[2]
-                    # rota
-                    print(self.design_data.vertices)
-                    self.prev_mouse_pos = mouse_pos
+                    self.move(first=False)
                     pass
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_UP:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
-                    param_name = list(self.design_data.params)[
-                        self.design_data.params_ix]
-                    if param_name == "type":
-                        self.toggle_body_type(forward=True)
-                    elif param_name == "level":
-                        self.design_data.params[param_name] += 1
-                    else:
-                        self.design_data.params[param_name] += self.design_data.float_inc
+                    # increase currently selected param
+                    self.modify_param(increase=True)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_DOWN:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
-                    param_name = list(self.design_data.params)[
-                        self.design_data.params_ix]
-                    if param_name == "type":
-                        self.toggle_body_type(forward=False)
-                    elif param_name == "level":
-                        self.design_data.params[param_name] -= 1
-                    else:
-                        self.design_data.params[param_name] -= self.design_data.float_inc
+                    # decrease currently selected param
+                    self.modify_param(increase=False)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_RIGHT:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
@@ -433,16 +377,92 @@ class BoxUI():
             elif event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     # toggle parameter to change
-                    # TODO: shift space to toggle -1
-                    if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
-                            self.design_data.params["type"] == BodyType.MOVING_ZONE:
-                        self.design_data.params_ix = (
-                            self.design_data.params_ix + 1) % len(list(self.design_data.params))
-                    else:
-                        # TODO: only toggle static bodies params not hardcoded
-                        self.design_data.params_ix = (
-                            self.design_data.params_ix + 1) % 3
+                    self.toggle_param()
                 pass
+
+    def set_points(self, from_design: bool):
+        if from_design:
+            mouse_pos = b2Vec2(pg.mouse.get_pos())
+            # TODO: check for mouse pos and perform action like select bodies
+            points_num = len(self.design_data.points)
+            if points_num == 0:
+                self.design_data.points.append(mouse_pos)
+            elif points_num == 2:
+                # reset design data
+                self.default_design_data()
+        else:
+            self.design_bodies.pop()  # removing old body
+            # adding new updated body
+            self.design_bodies.append(self.design_data)
+            self.default_design_data()
+
+    def scale(self):
+        mouse_pos = b2Vec2(pg.mouse.get_pos())
+        points_num = len(self.design_data.points)
+        if points_num > 0:
+            # removing old body
+            try:
+                self.design_bodies.remove(self.design_data)
+            except ValueError:
+                # there where no bodies to remove
+                pass
+            if points_num == 2:
+                self.design_data.vertices = self.get_vertices(
+                    self.design_data)
+                # replacing old point with new point on mouse position
+                self.design_data.points.pop()
+            # mouse motion after one point has been fixed
+            self.design_data.points.append(mouse_pos)
+            # new updated body
+            self.design_bodies.append(self.design_data)
+
+    def move(self, first: bool):
+        mouse_pos = b2Vec2(pg.mouse.get_pos())
+        if first:
+            points_num = len(self.design_data.points)
+            if points_num == 2:
+                self.prev_mouse_pos = b2Vec2(pg.mouse.get_pos())
+                self.set_mode(Mode.MOVE)
+        else:
+            delta_mouse = mouse_pos - self.prev_mouse_pos
+            for point in self.design_data.vertices:
+                point += delta_mouse
+            self.prev_mouse_pos = mouse_pos
+
+            self.design_data.points[0] = self.design_data.vertices[0]
+            self.design_data.points[1] = self.design_data.vertices[2]
+            self.design_data.init_vertices = self.design_data.vertices.copy()
+            self.design_data.delta_angle = 0
+
+    def toggle_param(self, forward=True):
+        # TODO: shift space to toggle -1
+        if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
+                self.design_data.params["type"] == BodyType.MOVING_ZONE:
+            self.design_data.params_ix = (
+                self.design_data.params_ix + 1) % len(list(self.design_data.params))
+        else:
+            # TODO: only toggle static bodies params not hardcoded
+            self.design_data.params_ix = (
+                self.design_data.params_ix + 1) % 3
+
+    def modify_param(self, increase=True):
+        param_name = list(self.design_data.params)[self.design_data.params_ix]
+        if param_name == "type":
+            if increase:
+                self.toggle_body_type(forward=True)
+            else:
+                self.toggle_body_type(forward=False)
+        elif param_name == "level":
+            if increase:
+                self.design_data.params[param_name] += 1
+            else:
+                self.design_data.params[param_name] -= 1
+        else:
+            if increase:
+                self.design_data.params[param_name] += self.design_data.float_inc
+            else:
+                self.design_data.params[param_name] -= self.design_data.float_inc
+        pass
 
     def rotate(self, first: bool):
         if first:
@@ -688,11 +708,11 @@ class BoxUI():
             0, self.commands_surface_height + self.border_width * 3)
         pos = design_pos.copy()
 
-        pg.draw.rect(self.screen, color.BLACK,
-                     pg.Rect(pos.x - self.border_width,
-                             pos.y,
-                             self.layout.simulation_xshift + self.border_width * 2,
-                             self.design_surface_height), width=self.border_width)
+        # pg.draw.rect(self.screen, color.BLACK,
+        #              pg.Rect(pos.x - self.border_width,
+        #                      pos.y,
+        #                      self.layout.simulation_xshift + self.border_width * 2,
+        #                      self.design_surface_height), width=self.border_width)
 
         # title
         pos += b2Vec2(self.border_width, self.border_width)
@@ -762,11 +782,11 @@ class BoxUI():
 
     def render_commands(self):
         pos = b2Vec2(0, self.title_surface_height + self.border_width)
-        pg.draw.rect(self.screen, color.BLACK,
-                     pg.Rect(pos.x - self.border_width,
-                             pos.y,
-                             self.layout.simulation_xshift + self.border_width * 2,
-                             self.commands_surface_height), width=self.border_width)
+        # pg.draw.rect(self.screen, color.BLACK,
+        #              pg.Rect(pos.x - self.border_width,
+        #                      pos.y,
+        #                      self.layout.simulation_xshift + self.border_width * 2,
+        #                      self.commands_surface_height), width=self.border_width)
 
         text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
