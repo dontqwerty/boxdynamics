@@ -285,7 +285,7 @@ class BoxEnv(gym.Env):
         self.ui.design_bodies.clear()
 
     def __create_body(self, pos, size, angle, design_data: DesignData):
-        type = design_data.type
+        type = design_data.params["type"]
         if type == BodyType.STATIC_OBSTACLE:
             body = self.create_static_obstacle(pos, size, angle=angle)
         elif type == BodyType.MOVING_OBSTACLE:

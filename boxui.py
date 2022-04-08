@@ -1,5 +1,3 @@
-
-import enum
 import json
 import logging
 import math
@@ -39,9 +37,12 @@ class ScreenLayout:
     simulation_xshift = 200
     simulation_yshift = 0
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
-    simulation_size: b2Vec2 = b2Vec2(width - simulation_xshift, height - simulation_yshift)
+    simulation_size: b2Vec2 = b2Vec2(
+        width - simulation_xshift, height - simulation_yshift)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
     board_size: b2Vec2 = b2Vec2(width, height) * 0
+    popup_size: b2Vec2 = b2Vec2(200, 100)
+    popup_pos: b2Vec2 = (b2Vec2(width, height) - popup_size / 2) / 2
     small_font: int = 14
     normal_font: int = 20
     big_font: int = 32
@@ -49,22 +50,22 @@ class ScreenLayout:
 
 @dataclass
 class DesignData:
-    shape: Enum = BodyShape.BOX  # used if creating
     selected: bool = False  # TODO: selectable
 
     # center and radius for circles
     points: List[b2Vec2] = field(default_factory=list)
     # all four vertices for rectangles
     vertices: List[b2Vec2] = field(default_factory=list)
-    type: Enum = BodyType.STATIC_OBSTACLE
-    color: tuple = field(default=color.STATIC_OBSTACLE)
-
     # body rotation
     rotated: bool = False
     init_vertices: List[b2Vec2] = field(default_factory=list)
     initial_angle: float = 0.0
     delta_angle: float = 0.0
 
+    shape: Enum = BodyShape.BOX # TODO: circles
+    color: tuple = field(default=color.STATIC_OBSTACLE)  # TODO: toggle color
+
+    # type: Enum = BodyType.STATIC_OBSTACLE
     params: Dict = field(default_factory=dict)
     # indicates which param to currently change
     params_ix: int = 0
@@ -108,6 +109,7 @@ class BoxUI():
         self.title_surface_height = 0
         self.commands_surface_height = 0
         self.design_surface_height = 0
+        self.popup_msg_size = b2Vec2(0, 0)
 
         # input text from user
         self.text_input = ""
@@ -129,13 +131,6 @@ class BoxUI():
         self.prev_mode = self.mode
         self.mode = mode
         info("Old mode {}, new mode {}".format(self.prev_mode, self.mode))
-
-    def shape_design(self):
-        if self.design_data.shape == BodyShape.BOX:
-            self.box_design()
-        elif self.design_data.shape == BodyShape.CIRCLE:
-            # TODO: circle design function
-            pass
 
     def render(self):
         self.screen.fill(color.BACK)
@@ -162,15 +157,55 @@ class BoxUI():
             self.draw_distances()
         elif self.mode not in (Mode.SIMULATION, Mode.NONE):
             self.render_design()
+            if self.mode in (Mode.QUIT_CONFIRMATION, Mode.USE_CONFIRMATION):
+                self.render_confirmation()
+            elif self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE):
+                self.render_input()
 
         pg.display.flip()
         self.clock.tick(self.target_fps)
         pass
 
+    def render_popup(self):
+        pg.draw.rect(self.screen, color.INFO_BACK,
+                     pg.Rect(self.layout.popup_pos.x,
+                             self.layout.popup_pos.y,
+                             self.layout.popup_size.x,
+                             self.layout.popup_size.y))
+
+    def render_confirmation(self):
+        self.render_popup()
+
+        text_font = pg.font.SysFont(
+            self.font, self.layout.normal_font)
+
+        # text
+        pos = self.layout.popup_pos + \
+            (self.layout.popup_size - self.popup_msg_size) / 2
+        s = "CONFIRM?"
+        text_surface = text_font.render(
+            s, True, color.BLACK, color.INFO_BACK)
+        self.popup_msg_size = b2Vec2(text_surface.get_size())
+        self.screen.blit(text_surface, pos)
+
+    def render_input(self):
+        self.render_popup()
+
+        text_font = pg.font.SysFont(
+            self.font, self.layout.normal_font)
+
+        # # title
+        # pos += b2Vec2(self.border_width, self.border_width)
+        # s = "DESIGN DATA"
+        # text_surface = text_font.render(
+        #     s, True, color.BLACK, color.INFO_BACK)
+        # self.screen.blit(text_surface, pos)
+
     def default_design_data(self):
         self.design_data = DesignData()
-        self.design_data.params = {"reward": 0,
-                                   "level": 0.0,
+        self.design_data.params = {"type": BodyType.STATIC_OBSTACLE,
+                                   "reward": 0.0,
+                                   "level": 0,
                                    "lin_velocity": 0.0,
                                    "lin_velocity_angle": 0.0,
                                    "ang_velocity": 0.0,
@@ -236,6 +271,7 @@ class BoxUI():
 
             elif event.type == pg.KEYDOWN and event.key == pg.K_c:
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
+                    # TODO: toggle shape
                     self.design_data.shape = BodyShape.BOX
                     pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_s:
@@ -251,11 +287,6 @@ class BoxUI():
                 if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     # use created world
                     self.set_mode(Mode.USE_CONFIRMATION)
-                pass
-            elif event.type == pg.KEYDOWN and event.key == pg.K_t:
-                if self.mode in (Mode.DESIGN, Mode.ROTATE):
-                    # toggle body type
-                    self.toggle_body_type()
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_a:
                 if self.mode == Mode.DESIGN:
@@ -317,10 +348,12 @@ class BoxUI():
                     self.env.manual_mode = not self.env.manual_mode
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_UP:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
                     param_name = list(self.design_data.params)[
                         self.design_data.params_ix]
-                    if param_name == "level":
+                    if param_name == "type":
+                        self.toggle_body_type(forward=True)
+                    elif param_name == "level":
                         self.design_data.params[param_name] += 1
                     else:
                         self.design_data.params[param_name] += self.design_data.float_inc
@@ -329,7 +362,9 @@ class BoxUI():
                 if self.mode == Mode.DESIGN:
                     param_name = list(self.design_data.params)[
                         self.design_data.params_ix]
-                    if param_name == "level":
+                    if param_name == "type":
+                        self.toggle_body_type(forward=False)
+                    elif param_name == "level":
                         self.design_data.params[param_name] -= 1
                     else:
                         self.design_data.params[param_name] -= self.design_data.float_inc
@@ -348,8 +383,8 @@ class BoxUI():
                 if self.mode == Mode.DESIGN:
                     # toggle parameter to change
                     # TODO: shift space to toggle -1
-                    if self.design_data.type == BodyType.MOVING_OBSTACLE or \
-                        self.design_data.type == BodyType.MOVING_ZONE:
+                    if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
+                            self.design_data.params["type"] == BodyType.MOVING_ZONE:
                         self.design_data.params_ix = (
                             self.design_data.params_ix + 1) % len(list(self.design_data.params))
                     else:
@@ -388,11 +423,11 @@ class BoxUI():
                 self.design_data.vertices[vix] = self.design_data.points[0] + (
                     b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
 
-    def toggle_body_type(self):
-        self.design_data.type = self.toggle_enum(
-            self.design_data.type, [BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT])
+    def toggle_body_type(self, forward):
+        self.design_data.params["type"] = self.toggle_enum(
+            self.design_data.params["type"], forward, skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT])
         self.design_data.color = self.env.get_data(
-            self.design_data.type).color
+            self.design_data.params["type"]).color
 
     def save_design(self, filename="test.json"):
         # db as design bodies since it's just a different
@@ -492,14 +527,17 @@ class BoxUI():
 
         return angle
 
-    def toggle_enum(self, e, skip=[]):
+    def toggle_enum(self, e, forward=True, skip=[]):
         enum_list = list(type(e))
-        new_ix = (enum_list.index(e) + 1) % len(enum_list)
+        if forward:
+            new_ix = (enum_list.index(e) + 1) % len(enum_list)
+        else:
+            new_ix = (enum_list.index(e) - 1) % len(enum_list)
         new_e = enum_list[new_ix]
 
         # TODO: check for undless loop
         if new_e in skip:
-            new_e = self.toggle_enum(new_e, skip)
+            new_e = self.toggle_enum(new_e, forward, skip)
 
         return new_e
 
@@ -562,7 +600,7 @@ class BoxUI():
                             ] = self.get_sorted_bodies(design=True)
 
         for body, _ in bodies_levels:
-            if body.type in types:
+            if body.params["type"] in types:
                 if body.shape == BodyShape.BOX:
                     try:
                         pg.draw.polygon(
@@ -600,10 +638,10 @@ class BoxUI():
         pos = design_pos.copy()
 
         pg.draw.rect(self.screen, color.BLACK,
-                         pg.Rect(pos.x - self.border_width,
-                                     pos.y,
-                                     self.layout.simulation_xshift + self.border_width * 2,
-                                     self.design_surface_height), width=self.border_width)
+                     pg.Rect(pos.x - self.border_width,
+                             pos.y,
+                             self.layout.simulation_xshift + self.border_width * 2,
+                             self.design_surface_height), width=self.border_width)
 
         # title
         pos += b2Vec2(self.border_width, self.border_width)
@@ -615,8 +653,8 @@ class BoxUI():
         text_font = pg.font.SysFont(
             self.font, self.layout.normal_font)
 
-        data = ["Type: {}".format(self.design_data.type.name),
-                "Shape: {}".format(self.design_data.shape.name),
+        # can't be toggled like params
+        data = ["Shape: {}".format(self.design_data.shape.name),
                 "Angle: {}".format(
                     round(-360 * self.design_data.delta_angle / (2 * math.pi), 3))]
 
@@ -632,12 +670,15 @@ class BoxUI():
             self.screen.blit(text_surface, pos)
 
         params = list()
+        params.append("Type: {}".format(
+            self.design_data.params["type"].name))
         params.append("Reward: {}".format(
             round(self.design_data.params["reward"], 3)))
-        params.append("Level: {}".format(round(self.design_data.params["level"])))
+        params.append("Level: {}".format(
+            round(self.design_data.params["level"])))
 
-        if self.design_data.type == BodyType.MOVING_OBSTACLE or \
-                self.design_data.type == BodyType.MOVING_ZONE:
+        if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
+                self.design_data.params["type"] == BodyType.MOVING_ZONE:
             params.append("Velocity: {}".format(
                 round(self.design_data.params["lin_velocity"], 3)))
             params.append("Velocity angle: {}".format(
@@ -671,10 +712,10 @@ class BoxUI():
     def render_commands(self):
         pos = b2Vec2(0, self.title_surface_height + self.border_width)
         pg.draw.rect(self.screen, color.BLACK,
-                         pg.Rect(pos.x - self.border_width,
-                                     pos.y,
-                                     self.layout.simulation_xshift + self.border_width * 2,
-                                     self.commands_surface_height), width=self.border_width)
+                     pg.Rect(pos.x - self.border_width,
+                             pos.y,
+                             self.layout.simulation_xshift + self.border_width * 2,
+                             self.commands_surface_height), width=self.border_width)
 
         text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
@@ -723,7 +764,8 @@ class BoxUI():
             self.commands = [{"key": "M", "description": "manual"}]
 
         if self.mode not in (Mode.SIMULATION, Mode.NONE):
-            self.commands.append({"key": "DEL", "description": "delete object"})
+            self.commands.append(
+                {"key": "DEL", "description": "delete object"})
 
         self.commands.append({"key": "ESC", "description": "exit"})
 
@@ -758,7 +800,7 @@ class BoxUI():
 
                 # drawing observation vectors
                 pg.draw.line(self.screen, observation.body.userData.color,
-                                 start_point, end_point)
+                             start_point, end_point)
                 # drawing intersection points
                 pg.draw.circle(
                     self.screen, color.INTERSECTION, end_point, 3)
