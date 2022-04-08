@@ -1,4 +1,5 @@
 import math
+import logging
 from Box2D import b2Vec2
 
 def get_line_eq(point1: b2Vec2, point2: b2Vec2):
@@ -36,7 +37,7 @@ def get_intersection(line1, line2):
         intersection[1] = (c1*a2 - c2*a1) / (a1*b2 - a2*b1)
     except ZeroDivisionError:
         # TODO: handle this
-        print("Intersection calculation failed")
+        logging.debug("Intersection calculation failed")
         pass
 
     return b2Vec2(intersection)

@@ -23,6 +23,7 @@ class Mode(Enum):
     NONE = 0
     DESIGN = 1
     ROTATE = 2
+    MOVE = 8
     SIMULATION = 3
     INPUT_SAVE = 4
     INPUT_LOAD = 5
@@ -299,22 +300,40 @@ class BoxUI():
             #         self.design_data.shape = BodyShape.BOX
             #         pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_s:
-                if self.mode in (Mode.DESIGN, Mode.ROTATE):
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     # asking to input file name
                     self.set_mode(Mode.INPUT_SAVE)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_l:
-                if self.mode in (Mode.DESIGN, Mode.ROTATE):
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     self.set_mode(Mode.INPUT_LOAD)
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_u:
-                if self.mode in (Mode.DESIGN, Mode.ROTATE):
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     # use created world
                     self.set_mode(Mode.USE_CONFIRMATION)
                 pass
+            elif event.type == pg.KEYDOWN and event.key == pg.K_m:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE):
+                    # moving body
+                    points_num = len(self.design_data.points)
+                    if points_num == 2:
+                        self.prev_mouse_pos = b2Vec2(pg.mouse.get_pos())
+                        self.set_mode(Mode.MOVE)
+                elif self.mode == Mode.MOVE:
+                    print("new:" + str(self.design_data.vertices))
+                    self.design_data.points[0] = self.design_data.vertices[0]
+                    self.design_data.points[1] = self.design_data.vertices[2]
+                    self.design_data.init_vertices = self.design_data.vertices.copy()
+                    self.design_data.delta_angle = 0
+                    self.set_mode(Mode.DESIGN)
+                elif self.mode == Mode.SIMULATION:
+                    self.env.manual_mode = not self.env.manual_mode
+                pass
+                pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_a:
-                if self.mode == Mode.DESIGN:
-                    # angle
+                if self.mode in (Mode.DESIGN, Mode.MOVE):
+                    # rotating body
                     points_num = len(self.design_data.points)
                     if points_num == 2 and self.design_data.shape == BodyShape.BOX:
                         self.rotate(first=True)
@@ -332,7 +351,7 @@ class BoxUI():
                     elif points_num == 2:
                         # reset design data
                         self.default_design_data()
-                elif self.mode == Mode.ROTATE:
+                elif self.mode in (Mode.ROTATE, Mode.MOVE):
                     self.design_bodies.pop()  # removing old body
                     # adding new updated body
                     self.design_bodies.append(self.design_data)
@@ -364,15 +383,23 @@ class BoxUI():
                         self.design_data.points.append(mouse_pos)
                         # new updated body
                         self.design_bodies.append(self.design_data)
+                        if self.prev_mode == Mode.MOVE:
+                            print("NEW:" + str(self.design_data.vertices))
                 elif self.mode == Mode.ROTATE:
                     self.rotate(first=False)
-                pass
-            elif event.type == pg.KEYDOWN and event.key == pg.K_m:
-                if self.mode == Mode.SIMULATION:
-                    self.env.manual_mode = not self.env.manual_mode
+                elif self.mode == Mode.MOVE:
+                    delta_mouse = mouse_pos - self.prev_mouse_pos
+                    for point in self.design_data.vertices:
+                        point += delta_mouse
+                    # self.design_data.points[0] = self.design_data.vertices[0]
+                    # self.design_data.points[1] = self.design_data.vertices[2]
+                    # rota
+                    print(self.design_data.vertices)
+                    self.prev_mouse_pos = mouse_pos
+                    pass
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_UP:
-                if self.mode in (Mode.DESIGN, Mode.ROTATE):
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     param_name = list(self.design_data.params)[
                         self.design_data.params_ix]
                     if param_name == "type":
@@ -383,7 +410,7 @@ class BoxUI():
                         self.design_data.params[param_name] += self.design_data.float_inc
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_DOWN:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     param_name = list(self.design_data.params)[
                         self.design_data.params_ix]
                     if param_name == "type":
@@ -394,17 +421,17 @@ class BoxUI():
                         self.design_data.params[param_name] -= self.design_data.float_inc
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_RIGHT:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     # increase inc by factor 10
                     self.design_data.float_inc = self.design_data.float_inc * 10
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_LEFT:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     # decrease inc by factor 10
                     self.design_data.float_inc = self.design_data.float_inc / 10
                 pass
             elif event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
-                if self.mode == Mode.DESIGN:
+                if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
                     # toggle parameter to change
                     # TODO: shift space to toggle -1
                     if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
@@ -724,7 +751,7 @@ class BoxUI():
 
         for ix, s in enumerate(params):
             pos += b2Vec2(0, text_surface.get_height())
-            if self.mode == Mode.DESIGN and ix == self.design_data.params_ix:
+            if ix == self.design_data.params_ix:
                 text_surface = text_font.render(
                     s, True, color.BLACK, color.GREEN)
             else:
