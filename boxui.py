@@ -12,9 +12,9 @@ import numpy as np
 import pygame as pg
 from Box2D import b2Body, b2Vec2
 
-import boxcolors as color
+import boxcolors
 from boxdef import BodyShape, BodyType
-from boxutils import get_intersection, get_line_eq_angle
+from boxutils import get_intersection, get_line_eq, get_line_eq_angle
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
@@ -31,13 +31,19 @@ class Mode(Enum):
     USE_CONFIRMATION = 7
 
 
+class SetType(Enum):
+    DEFAULT = 0
+    PREVIOUS = 1
+    RANDOM = 2
+
+
 @dataclass
 class ScreenLayout:
     width: int = 1000  # pixels
     height: int = 800
     size: b2Vec2 = b2Vec2(width, height)
-    simulation_xshift = 200
-    simulation_yshift = 0
+    simulation_xshift: int = width / 4
+    simulation_yshift: int = 0
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
     simulation_size: b2Vec2 = b2Vec2(
         width - simulation_xshift, height - simulation_yshift)
@@ -64,8 +70,9 @@ class DesignData:
     initial_angle: float = 0.0
     delta_angle: float = 0.0
 
-    shape: Enum = BodyShape.BOX # TODO: circles
-    color: tuple = field(default=color.STATIC_OBSTACLE)  # TODO: toggle color
+    shape: Enum = BodyShape.BOX  # TODO: circles
+    # TODO: toggle color
+    color: tuple = field(default=boxcolors.STATIC_OBSTACLE)
 
     # type: Enum = BodyType.STATIC_OBSTACLE
     params: Dict = field(default_factory=dict)
@@ -89,7 +96,9 @@ class BoxUI():
         self.design_bodies: List[DesignData] = list()
 
         # setting up design variables
-        self.default_design_data()
+        self.set_design_data(set_type=SetType.DEFAULT)
+        self.set_type = SetType.PREVIOUS
+        # self.set_type = SetType.DEFAULT
 
         # pg setup
         self.screen = pg.display.set_mode(
@@ -116,6 +125,13 @@ class BoxUI():
         # input text from user
         self.text_input = ""
 
+        # design_bodies index when selecting
+        self.design_body_ix = 0
+
+        # initially empty list of design_data values that the user
+        # can save and use using keys from 0 to 9
+        self.saved_designs: List[DesignData] = [None]*10
+
         logging.basicConfig(level=logging.INFO)
         info("BoxUI created")
 
@@ -135,7 +151,7 @@ class BoxUI():
         info("Old mode {}, new mode {}".format(self.prev_mode, self.mode))
 
     def render(self):
-        self.screen.fill(color.BACK)
+        self.screen.fill(boxcolors.BACK)
 
         self.render_back()
 
@@ -144,7 +160,7 @@ class BoxUI():
             self.font, self.layout.big_font)
         s = "{}".format(self.mode.name)
         text_surface = text_font.render(
-            s, True, color.BLACK, color.INFO_BACK)
+            s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.title_surface_height = text_surface.get_height()
         pos = b2Vec2(self.border_width, self.border_width / 2)
         self.screen.blit(text_surface, pos)
@@ -153,13 +169,17 @@ class BoxUI():
 
         self.render_world()
 
-        if self.mode == Mode.SIMULATION:
+        # TODO: fix that when designing and quit confirmation is asked
+        # the observation vectors of the agente can be seen
+        if self.mode in (Mode.SIMULATION, Mode.QUIT_CONFIRMATION):
             self.render_action()
             self.render_observations()
             self.draw_distances()
+            if self.mode == Mode.QUIT_CONFIRMATION:
+                self.render_confirmation()
         elif self.mode not in (Mode.SIMULATION, Mode.NONE):
             self.render_design()
-            if self.mode in (Mode.QUIT_CONFIRMATION, Mode.USE_CONFIRMATION):
+            if self.mode == Mode.USE_CONFIRMATION:
                 self.render_confirmation()
             elif self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE):
                 self.render_input()
@@ -169,7 +189,7 @@ class BoxUI():
         pass
 
     def render_popup(self):
-        pg.draw.rect(self.screen, color.INFO_BACK,
+        pg.draw.rect(self.screen, boxcolors.INFO_BACK,
                      pg.Rect(self.layout.popup_pos.x,
                              self.layout.popup_pos.y,
                              self.layout.popup_size.x,
@@ -186,7 +206,7 @@ class BoxUI():
             (self.layout.popup_size - self.popup_msg_size) / 2
         s = "CONFIRM?"
         text_surface = text_font.render(
-            s, True, color.BLACK, color.INFO_BACK)
+            s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.popup_msg_size = b2Vec2(text_surface.get_size())
         self.screen.blit(text_surface, pos)
 
@@ -201,44 +221,75 @@ class BoxUI():
             (self.layout.popup_size - self.popup_msg_size) / 2
         s = "ENTER NAME"
         text_surface = text_font.render(
-            s, True, color.BLACK, color.INFO_BACK)
+            s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.popup_msg_size = b2Vec2(text_surface.get_size())
         self.screen.blit(text_surface, pos)
 
         pos += b2Vec2(text_surface.get_width() / 4, text_surface.get_height())
         s = self.text_input
         text_surface = text_font.render(
-            s, True, color.BLACK, color.INFO_BACK)
+            s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.popup_msg_size.y += text_surface.get_height()
         b2Vec2(text_surface.get_size())
         self.screen.blit(text_surface, pos)
 
-    def default_design_data(self):
-        self.design_data = DesignData()
-        # self.design_data.params = {"type": BodyType.STATIC_OBSTACLE,
-        #                            "reward": 0.0,
-        #                            "level": 0,
-        #                            "lin_velocity": 0.0,
-        #                            "lin_velocity_angle": 0.0,
-        #                            "ang_velocity": 0.0,
-        #                            "density": 1.0,
-        #                            "inertia": 0.0,
-        #                            "friction": 0.0,
-        #                            "lin_damping": 0.0,
-        #                            "ang_damping": 0.0}
+    def copy_design_data(self):
+        design_dict: Dict[str,
+                          DesignData] = self.design_data.__dict__  # pointer
+        design_data: Dict[str, DesignData] = dict()
 
-        types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE, BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
-        self.design_data.params = {"type": random.choice(types),
-                                   "reward": random.uniform(-1, 1),
-                                   "level": 0,
-                                   "lin_velocity": random.uniform(0, 10),
-                                   "lin_velocity_angle": random.uniform(0, 2*math.pi),
-                                   "ang_velocity": random.uniform(0, 10),
-                                   "density": 0.5,
-                                   "inertia": 0,
-                                   "friction": random.uniform(0, 0.001),
-                                   "lin_damping": random.uniform(0, 0.001),
-                                   "ang_damping": random.uniform(0, 0.001)}
+        # checking for fields that need to be copied manually
+        for key in list(design_dict.keys()):
+            # b2Vec2
+            if type(design_dict[key]) is b2Vec2:
+                design_data[key] = (design_dict['key'].copy())
+            # list of b2Vec2
+            elif isinstance(design_dict[key], list) and all(isinstance(val, b2Vec2) for val in design_dict[key]):
+                design_data[key] = list()
+                for val in design_dict[key]:
+                    design_data[key].append(val.copy())
+            # dictionary
+            elif isinstance(design_dict[key], dict):
+                design_data[key] = design_dict[key].copy()
+            else:
+                design_data[key] = design_dict[key]
+
+        design_data = DesignData(**design_data)
+
+        return design_data
+
+    def set_design_data(self, set_type=DEFAULT):
+        design_data = DesignData()
+        if set_type == SetType.DEFAULT:
+            design_data.params = {"type": BodyType.STATIC_OBSTACLE,
+                                  "reward": 0.0,
+                                  "level": 0,
+                                  "lin_velocity": 0.0,
+                                  "lin_velocity_angle": 0.0,
+                                  "ang_velocity": 0.0,
+                                  "density": 1.0,
+                                  "inertia": 0.0,
+                                  "friction": 0.0,
+                                  "lin_damping": 0.0,
+                                  "ang_damping": 0.0}
+        elif set_type == SetType.PREVIOUS:
+            design_data.params = self.design_data.params.copy()
+        elif set_type == SetType.RANDOM:
+            types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE,
+                     BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
+            design_data.params = {"type": random.choice(types),
+                                  "reward": random.uniform(-1, 1),
+                                  "level": 0,
+                                  "lin_velocity": random.uniform(0, 10),
+                                  "lin_velocity_angle": random.uniform(0, 2*math.pi),
+                                  "ang_velocity": random.uniform(-5, 5),
+                                  "density": 0.5,
+                                  "inertia": 0,
+                                  "friction": random.uniform(0, 0.001),
+                                  "lin_damping": random.uniform(0, 0.001),
+                                  "ang_damping": random.uniform(0, 0.001)}
+
+        self.design_data = design_data
 
     def user_input(self):
         for event in pg.event.get():
@@ -292,7 +343,7 @@ class BoxUI():
                     self.design_bodies.pop()
                 except IndexError:
                     pass
-                self.default_design_data()
+                self.set_design_data(set_type=self.set_type)
 
             # elif event.type == pg.KEYDOWN and event.key == pg.K_c:
             #     if self.mode in (Mode.DESIGN, Mode.ROTATE):
@@ -333,17 +384,37 @@ class BoxUI():
                 elif self.mode == Mode.ROTATE:
                     self.set_mode(Mode.DESIGN)
                 pass
+            # pg mouse buttons
+            # 2 - middle click
             elif event.type == pg.MOUSEBUTTONDOWN:
-                if self.mode == Mode.DESIGN:
-                    self.set_points(from_design=True)
-                elif self.mode in (Mode.ROTATE, Mode.MOVE):
-                    self.set_points(from_design=False)
-                    self.set_mode(Mode.DESIGN)
-                elif self.mode == Mode.SIMULATION:
-                    # TODO: check for mouse pos and perform action
-                    # show body properties when clicked
-                    # let user change level
-                    pass
+                # 1 - left click
+                if event.button == 1:
+                    if self.mode == Mode.DESIGN:
+                        self.set_points(from_design=True)
+                    elif self.mode in (Mode.ROTATE, Mode.MOVE):
+                        self.set_points(from_design=False)
+                        self.set_mode(Mode.DESIGN)
+                    elif self.mode == Mode.SIMULATION:
+                        # TODO: check for mouse pos and perform action
+                        # show body properties when clicked
+                        # let user change level
+                        pass
+                # 3 - right click
+                elif event.button == 3:
+                    # toggles between already created design bodies
+                    # in order to modify them
+                    # TODO: make it better
+                    self.toggle_design_body()
+                # 4 - scroll up
+                elif event.button == 4:
+                    if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
+                        # increase currently selected param
+                        self.modify_param(increase=True)
+                # 5 - scroll down
+                elif event.button == 5:
+                    if self.mode in (Mode.DESIGN, Mode.ROTATE, Mode.MOVE):
+                        # increase currently selected param
+                        self.modify_param(increase=False)
                 pass
             elif event.type == pg.MOUSEMOTION:
                 if self.mode == Mode.DESIGN:
@@ -380,6 +451,13 @@ class BoxUI():
                     self.toggle_param()
                 pass
 
+    def toggle_design_body(self):
+        if len(self.design_bodies):
+            if self.design_data == self.design_bodies[self.design_body_ix]:
+                self.design_body_ix = (
+                    self.design_body_ix + 1) % len(self.design_bodies)
+            self.design_data = self.design_bodies[self.design_body_ix]
+
     def set_points(self, from_design: bool):
         if from_design:
             mouse_pos = b2Vec2(pg.mouse.get_pos())
@@ -389,12 +467,12 @@ class BoxUI():
                 self.design_data.points.append(mouse_pos)
             elif points_num == 2:
                 # reset design data
-                self.default_design_data()
+                self.set_design_data(set_type=self.set_type)
         else:
             self.design_bodies.pop()  # removing old body
             # adding new updated body
             self.design_bodies.append(self.design_data)
-            self.default_design_data()
+            self.set_design_data(set_type=self.set_type)
 
     def scale(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
@@ -631,26 +709,26 @@ class BoxUI():
                     (self.layout.simulation_xshift, 0),
                     (self.layout.simulation_xshift, self.layout.height),
                     (0, self.layout.height)]
-        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, boxcolors.INFO_BACK, vertices)
 
         vertices = [(0, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.simulation_yshift),
                     (0, self.layout.simulation_yshift)]
-        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, boxcolors.INFO_BACK, vertices)
 
         vertices = [(self.layout.simulation_pos.x + self.layout.simulation_size.x, 0),
                     (self.layout.width, 0),
                     (self.layout.width, self.layout.height),
                     (self.layout.simulation_pos.x + self.layout.simulation_size.x, self.layout.height)]
-        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, boxcolors.INFO_BACK, vertices)
 
         vertices = [(0, self.layout.simulation_pos.y + self.layout.simulation_size.y),
                     (self.layout.width, self.layout.simulation_pos.y +
                      self.layout.simulation_size.y),
                     (self.layout.width, self.layout.height),
                     (0, self.layout.height)]
-        pg.draw.polygon(self.screen, color.INFO_BACK, vertices)
+        pg.draw.polygon(self.screen, boxcolors.INFO_BACK, vertices)
 
     def render_simulation_data(self):
         # text_font = pg.font.SysFont(self.font, self.font_size)
@@ -658,10 +736,10 @@ class BoxUI():
         # # fps
         # fps = round(self.clock.get_fps())
         # fps_point = (0, 0)
-        # fps_color = color.GREEN.value if abs(
-        #     fps - self.target_fps) < 10 else color.RED.value
+        # fps_color = boxcolors.GREEN.value if abs(
+        #     fps - self.target_fps) < 10 else boxcolors.RED.value
         # text_surface = text_font.render(
-        #     str(fps), True, color.BLACK.value, fps_color)
+        #     str(fps), True, boxcolors.BLACK.value, fps_color)
         # self.screen.blit(text_surface, fps_point)
         pass
 
@@ -683,6 +761,9 @@ class BoxUI():
                 radius = (body.points[0] - body.points[1]).length
                 pg.draw.circle(
                     self.screen, body.color, body.points[0], radius)
+            if body == self.design_data:
+                pg.draw.circle(self.screen, boxcolors.YELLOW,
+                               body.points[0], 5)
 
         self.render_design_data()
 
@@ -708,7 +789,7 @@ class BoxUI():
             0, self.commands_surface_height + self.border_width * 3)
         pos = design_pos.copy()
 
-        # pg.draw.rect(self.screen, color.BLACK,
+        # pg.draw.rect(self.screen, boxcolors.BLACK,
         #              pg.Rect(pos.x - self.border_width,
         #                      pos.y,
         #                      self.layout.simulation_xshift + self.border_width * 2,
@@ -718,7 +799,7 @@ class BoxUI():
         pos += b2Vec2(self.border_width, self.border_width)
         s = "DESIGN DATA"
         text_surface = text_font.render(
-            s, True, color.BLACK, color.INFO_BACK)
+            s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.screen.blit(text_surface, pos)
 
         text_font = pg.font.SysFont(
@@ -734,10 +815,10 @@ class BoxUI():
             # TODO: not ix hardcoded
             if self.mode == Mode.ROTATE and ix == 2:
                 text_surface = text_font.render(
-                    s, True, color.BLACK, color.GREEN)
+                    s, True, boxcolors.BLACK, boxcolors.GREEN)
             else:
                 text_surface = text_font.render(
-                    s, True, color.BLACK, color.INFO_BACK)
+                    s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
         params = list()
@@ -773,16 +854,16 @@ class BoxUI():
             pos += b2Vec2(0, text_surface.get_height())
             if ix == self.design_data.params_ix:
                 text_surface = text_font.render(
-                    s, True, color.BLACK, color.GREEN)
+                    s, True, boxcolors.BLACK, boxcolors.GREEN)
             else:
                 text_surface = text_font.render(
-                    s, True, color.BLACK, color.INFO_BACK)
+                    s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
         self.design_surface_height = pos.y - design_pos.y + self.border_width * 3
 
     def render_commands(self):
         pos = b2Vec2(0, self.title_surface_height + self.border_width)
-        # pg.draw.rect(self.screen, color.BLACK,
+        # pg.draw.rect(self.screen, boxcolors.BLACK,
         #              pg.Rect(pos.x - self.border_width,
         #                      pos.y,
         #                      self.layout.simulation_xshift + self.border_width * 2,
@@ -794,7 +875,7 @@ class BoxUI():
         # title
         pos += b2Vec2(self.border_width, self.border_width)
         text_surface = text_font.render(
-            "COMMANDS", True, color.BLACK, color.INFO_BACK)
+            "COMMANDS", True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.screen.blit(text_surface, pos)
 
         text_font = pg.font.SysFont(
@@ -805,7 +886,7 @@ class BoxUI():
             pos += b2Vec2(0, text_surface.get_height())
             s = "- {}: {}".format(command["key"], command["description"])
             text_surface = text_font.render(
-                s, True, color.BACK, color.INFO_BACK)
+                s, True, boxcolors.BACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
         self.commands_surface_height = pos.y
@@ -844,7 +925,7 @@ class BoxUI():
         p1 = self.__pg_coord(self.env.agent_head)
         p2 = self.__pg_coord(self.env.agent_head + self.env.action)
 
-        pg.draw.line(self.screen, color.ACTION, p1, p2)
+        pg.draw.line(self.screen, boxcolors.ACTION, p1, p2)
 
     def draw_distances(self):
         text_font = pg.font.SysFont(
@@ -860,7 +941,7 @@ class BoxUI():
                 text_point = self.__pg_coord(
                     self.env.agent_head + (observation.intersection - self.env.agent_head) / 2)
                 text_surface = text_font.render(
-                    str(distance), False, color.BLACK, color.WHITE)
+                    str(distance), False, boxcolors.BLACK, boxcolors.WHITE)
                 self.screen.blit(text_surface, text_point)
 
     def render_observations(self):
@@ -874,7 +955,7 @@ class BoxUI():
                              start_point, end_point)
                 # drawing intersection points
                 pg.draw.circle(
-                    self.screen, color.INTERSECTION, end_point, 3)
+                    self.screen, boxcolors.INTERSECTION, end_point, 3)
 
     def get_vertices(self, body: DesignData):
         p1 = body.points[0]
