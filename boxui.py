@@ -42,7 +42,7 @@ class ScreenLayout:
         width - simulation_xshift, height - simulation_yshift)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
     board_size: b2Vec2 = b2Vec2(width, height) * 0
-    popup_size: b2Vec2 = b2Vec2(200, 100)
+    popup_size: b2Vec2 = b2Vec2(150, 60)
     popup_pos: b2Vec2 = (b2Vec2(width, height) - popup_size / 2) / 2
     small_font: int = 14
     normal_font: int = 20
@@ -172,7 +172,7 @@ class BoxUI():
                      pg.Rect(self.layout.popup_pos.x,
                              self.layout.popup_pos.y,
                              self.layout.popup_size.x,
-                             self.layout.popup_size.y))
+                             self.layout.popup_size.y), width=4)
 
     def render_confirmation(self):
         self.render_popup()
@@ -624,10 +624,11 @@ class BoxUI():
                             ] = self.get_sorted_bodies(design=True)
 
         for body, _ in bodies_levels:
+            color = self.env.get_data(body.params["type"]).color
             if body.shape == BodyShape.BOX:
                 try:
                     pg.draw.polygon(
-                        self.screen, body.color, body.vertices)
+                        self.screen, color, body.vertices)
                 except ValueError:
                     # wait another cycle for the vertices to be there
                     pass

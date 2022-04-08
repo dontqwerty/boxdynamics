@@ -250,9 +250,6 @@ class BoxEnv(gym.Env):
 
         self.ui.user_input()
 
-        if self.agent_body.userData.contact_bodies:
-            print([b.userData.type.name for b in self.agent_body.userData.contact_bodies])
-
         return self.state, step_reward, done, info
 
     def render(self):
