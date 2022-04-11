@@ -88,7 +88,6 @@ class ContactListener(b2ContactListener):
             # new_value: [float, float]
             body.ApplyForce(
                 force=b2Vec2(new_value), point=body.position, wake=True)
-            print("Force applied: {}".format(new_value))
         elif effect_type == EffectType.DONE:
             self.env.done = True
         elif effect_type == EffectType.RESET:
@@ -113,13 +112,11 @@ class ContactListener(b2ContactListener):
             body = contact.fixtureA.body
             agent = contact.fixtureB.body
 
-        # print("effect: " + str(body.userData.effect) + str(agent.userData.effect))
         # get effect type
         effect_type = body.userData.effect["type"]
 
         # get value if needed
         value = body.userData.effect["value"]
-        print("effect: " + str(EffectType(effect_type).name) + str(value))
 
         # perform effect
         self.effect(agent, effect_type, value)
