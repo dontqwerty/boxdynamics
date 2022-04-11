@@ -1,6 +1,7 @@
+import json
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import IntEnum
 from typing import Dict, List
 
@@ -19,40 +20,40 @@ from boxutils import get_intersection, get_line_eq
 
 @dataclass
 class EnvConfig:
-    target_fps = 60
-    time_step = 1.0 / target_fps
-    ppm = 10  # pixel per meter
+    target_fps: float = 60
+    time_step: float = 1.0 / target_fps
+    ppm: float = 10  # pixel per meter
 
     # world
-    boundaries_width = 10  # meters
+    boundaries_width: float = 10  # meters
 
     # velocity and position iterations
     # higher values improve precision in
     # physics simulations
-    vel_iter = 6
-    pos_iter = 2
+    vel_iter: int = 6
+    pos_iter: int = 2
 
     # action space
-    min_angle = -math.pi * 3 / 4  # radians
-    max_angle = math.pi * 3 / 4
+    min_angle: float = -math.pi * 3 / 4  # radians
+    max_angle: float = math.pi * 3 / 4
 
-    min_force = 0  # newtons
-    max_force = 8
+    min_force: float = 0  # newtons
+    max_force: float = 8
 
     # observation space
-    observation_range = math.pi - math.pi/8  # 2*math.pi
-    observation_max_distance = 1000  # how far can the agent see
-    observation_num = 20  # number of distance vectors
+    observation_range: float = math.pi - math.pi/8  # 2*math.pi
+    observation_max_distance: float = 1000  # how far can the agent see
+    observation_num: int = 20  # number of distance vectors
 
     # agent frictions
-    agent_angular_damping = 2
-    agent_linear_damping = 0.1
+    agent_angular_damping: float = 2
+    agent_linear_damping: float = 0.1
 
     # corrections
-    agent_head_inside = 0.2
+    agent_head_inside: float = 0.2
 
     # objects
-    agent_mass = 0.2  # kg
+    agent_mass: float = 0.2  # kg
 
 
 @dataclass
@@ -183,6 +184,16 @@ class BoxEnv(gym.Env):
         for body in self.world.bodies:
             self.world.DestroyBody(body)
         self.ui.quit()
+
+    def save_conf(self, filename="config.json"):
+        with open(filename, "w") as f:
+            json.dump(asdict(self.conf), f)
+        pass
+
+    def load_conf(self, filename="config.json"):
+        with open(filename, "r") as f:
+            self.conf = EnvConfig(**json.load(f))
+        pass
 
     def set_reward(self):
         step_reward = 0
