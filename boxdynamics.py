@@ -1,3 +1,4 @@
+import enum
 import json
 import math
 import os
@@ -62,8 +63,8 @@ class EnvCfg:
     ppm: float = 10  # pixel per meter
 
     # world
-    create_boundaries: bool = True
-    boundaries_width: float = 10  # meters
+    create_borders: bool = True
+    borders_width: float = 10  # meters
 
     # velocity and position iterations
     # higher values improve precision in
@@ -72,7 +73,7 @@ class EnvCfg:
     pos_iter: int = 2
 
     agent_cfg: AgentCfg = AgentCfg()
-    # design: Dsi
+    design: DesignData = DesignData()
 
 
 @dataclass
@@ -213,6 +214,8 @@ class BoxEnv(gym.Env):
         pass
 
     def save_conf(self, filename="config.json"):
+        
+
         with open(filename, "w") as f:
             json.dump(asdict(self.cfg), f)
         pass
@@ -220,6 +223,8 @@ class BoxEnv(gym.Env):
     def load_conf(self, filename="config.json"):
         with open(filename, "r") as f:
             self.cfg = EnvCfg(**json.load(f))
+        for bix, body in enumerate(self.cfg.design):
+            self.cfg.design[bix] = DesignData(**body)
         self.cfg.agent_cfg = AgentCfg(**self.cfg.agent_cfg)
         pass
 
@@ -246,6 +251,15 @@ class BoxEnv(gym.Env):
         self.agent_body.ApplyForce(
             force=self.action, point=self.agent_head, wake=True)
 
+    def create_world(self):
+        if self.cfg.create_borders:
+            # adding world borders
+            self.create_borders()
+
+        # adding dynamic body for RL agent
+        # TODO: support agent parameters from ouside class
+        self.create_agent()
+
     def world_design(self):
         self.ui.set_mode(UIMode.RESIZE)
         while self.ui.mode != UIMode.SIMULATION:
@@ -271,19 +285,10 @@ class BoxEnv(gym.Env):
 
             self.create_body(pos, size, angle, design)
 
-        self.ui.design_bodies.clear()
+        self.cfg.design = self.ui.designs_to_dicts(self.ui.copy_design_bodies())
+        self.save_conf()
 
-    def set_body_params(self, body: b2Body, design_data: DesignData):
-        body.angularDamping = design_data.params["ang_damping"]
-        body.angularVelocity = design_data.params["ang_velocity"]
-        body.linearDamping = design_data.params["lin_damping"]
-        design_data.params["lin_velocity_angle"] = design_data.params["lin_velocity_angle"] * (
-            2 * math.pi / 360)
-        body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(
-            design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
-        body.inertia = design_data.params["inertia"]
-        body.fixtures[0].density = design_data.params["density"]
-        body.fixtures[0].friction = design_data.params["friction"]
+        self.ui.design_bodies.clear()
 
     def create_body(self, pos, size, angle, design_data: DesignData):
         type = design_data.params["type"]
@@ -302,6 +307,132 @@ class BoxEnv(gym.Env):
         body.userData.level = design_data.params["level"]
 
         body.userData.effect = design_data.effect.copy()
+
+    def create_borders(self):
+        inside = 0.0  # defines how much of the borders are visible
+
+        # TODO: border reward
+
+        pos = b2Vec2(self.world_width / 2, inside -
+                     (self.cfg.borders_width / 2))
+        self.bottom_border: b2Body = self.world.CreateStaticBody(
+            position=pos,
+            shapes=b2PolygonShape(
+                box=(self.world_width / 2 + self.cfg.borders_width, self.cfg.borders_width / 2)),
+            userData=self.get_border_data()
+        )
+
+        pos = b2Vec2(self.world_width / 2, self.world_height -
+                     inside + (self.cfg.borders_width / 2))
+        self.top_border: b2Body = self.world.CreateStaticBody(
+            position=pos,
+            shapes=b2PolygonShape(
+                box=(self.world_width / 2 + self.cfg.borders_width, self.cfg.borders_width / 2)),
+            userData=self.get_border_data()
+        )
+
+        pos = b2Vec2(inside - (self.cfg.borders_width / 2),
+                     self.world_height / 2)
+        self.left_border: b2Body = self.world.CreateStaticBody(
+            position=pos,
+            shapes=b2PolygonShape(
+                box=(self.cfg.borders_width / 2, self.world_height / 2 + self.cfg.borders_width)),
+            userData=self.get_border_data()
+        )
+
+        pos = b2Vec2(self.world_width - inside +
+                     (self.cfg.borders_width / 2), self.world_height / 2)
+        self.right_border: b2Body = self.world.CreateStaticBody(
+            position=pos,
+            shapes=b2PolygonShape(
+                box=(self.cfg.borders_width / 2, self.world_height / 2 + self.cfg.borders_width)),
+            userData=self.get_border_data()
+        )
+
+    def create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
+        agent_width, agent_height = self.cfg.agent_cfg.size
+        self.agent_size = b2Vec2(agent_width, agent_height)
+
+        # setting random initial position
+        if agent_pos is None:
+            r = self.agent_size.length
+            try:
+                x = random.randint(int(r), int(self.world_width - r))
+                y = random.randint(int(r),
+                                   int(self.world_height - r))
+            except ValueError:
+                assert False and "There is no space to spawn the agent, modify world sizes"
+            agent_pos = b2Vec2(x, y)
+
+        # setting random initial angle
+        if agent_angle is None:
+            agent_angle = random.random() * (2*math.pi)
+
+        self.agent_body: b2Body = self.world.CreateDynamicBody(
+            position=agent_pos, angle=agent_angle)
+        self.agent_fix: b2Fixture = self.agent_body.CreatePolygonFixture(
+            box=(agent_width, agent_height), density=self.cfg.agent_cfg.density, friction=self.cfg.agent_cfg.friction)
+
+        self.agent_body.userData = self.get_agent_data()
+
+        self.agent_fix.body.angularDamping = self.cfg.agent_cfg.ang_damp
+        self.agent_fix.body.linearDamping = self.cfg.agent_cfg.lin_damp
+
+    # TODO: support colors, circles
+    def create_static_obstacle(self, pos, size, angle=0):
+        body: b2Body = self.world.CreateStaticBody(
+            position=pos, angle=angle
+        )
+        fixture: b2Fixture = body.CreatePolygonFixture(
+            box=size)
+
+        body.userData = self.get_static_obstacle_data()
+        return body
+
+    def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
+        body: b2Body = self.world.CreateDynamicBody(
+            position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
+            bullet=False, )
+        _: b2Fixture = body.CreatePolygonFixture(
+            box=size, density=1)
+
+        body.userData = self.get_moving_obstacle_data()
+        return body
+
+    def create_static_zone(self, pos, size, angle=0):
+        body: b2Body = self.world.CreateStaticBody(
+            position=pos, angle=angle)
+        fixture: b2Fixture = body.CreatePolygonFixture(
+            box=size)
+        fixture.sensor = True
+
+        body.userData = self.get_static_zone_data()
+        return body
+
+    def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
+        body: b2Body = self.world.CreateDynamicBody(
+            position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
+            bullet=False)
+        fixture: b2Fixture = body.CreatePolygonFixture(
+            box=size)
+
+        fixture.sensor = True
+
+        body.userData = self.get_moving_zone_data()
+        return body
+
+
+    def set_body_params(self, body: b2Body, design_data: DesignData):
+        body.angularDamping = design_data.params["ang_damping"]
+        body.angularVelocity = design_data.params["ang_velocity"]
+        body.linearDamping = design_data.params["lin_damping"]
+        design_data.params["lin_velocity_angle"] = design_data.params["lin_velocity_angle"] * (
+            2 * math.pi / 360)
+        body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(
+            design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
+        body.inertia = design_data.params["inertia"]
+        body.fixtures[0].density = design_data.params["density"]
+        body.fixtures[0].friction = design_data.params["friction"]
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key
@@ -434,55 +565,6 @@ class BoxEnv(gym.Env):
         except ZeroDivisionError:
             return self.agent_body.angle
 
-    def create_world(self):
-        # adding world borders
-        self.create_borders()
-
-        # adding dynamic body for RL agent
-        # TODO: support agent parameters from ouside class
-        self.create_agent()
-
-    def create_borders(self):
-        inside = 0.0  # defines how much of the borders are visible
-
-        # TODO: border reward
-
-        pos = b2Vec2(self.world_width / 2, inside -
-                     (self.cfg.boundaries_width / 2))
-        self.bottom_border: b2Body = self.world.CreateStaticBody(
-            position=pos,
-            shapes=b2PolygonShape(
-                box=(self.world_width / 2 + self.cfg.boundaries_width, self.cfg.boundaries_width / 2)),
-            userData=self.get_border_data()
-        )
-
-        pos = b2Vec2(self.world_width / 2, self.world_height -
-                     inside + (self.cfg.boundaries_width / 2))
-        self.top_border: b2Body = self.world.CreateStaticBody(
-            position=pos,
-            shapes=b2PolygonShape(
-                box=(self.world_width / 2 + self.cfg.boundaries_width, self.cfg.boundaries_width / 2)),
-            userData=self.get_border_data()
-        )
-
-        pos = b2Vec2(inside - (self.cfg.boundaries_width / 2),
-                     self.world_height / 2)
-        self.left_border: b2Body = self.world.CreateStaticBody(
-            position=pos,
-            shapes=b2PolygonShape(
-                box=(self.cfg.boundaries_width / 2, self.world_height / 2 + self.cfg.boundaries_width)),
-            userData=self.get_border_data()
-        )
-
-        pos = b2Vec2(self.world_width - inside +
-                     (self.cfg.boundaries_width / 2), self.world_height / 2)
-        self.right_border: b2Body = self.world.CreateStaticBody(
-            position=pos,
-            shapes=b2PolygonShape(
-                box=(self.cfg.boundaries_width / 2, self.world_height / 2 + self.cfg.boundaries_width)),
-            userData=self.get_border_data()
-        )
-
     def get_data(self, type: BodyType):
         if type == BodyType.BORDER:
             return self.get_border_data()
@@ -522,78 +604,6 @@ class BoxEnv(gym.Env):
     def get_moving_zone_data(self) -> BodyData:
         return BodyData(
             type=BodyType.MOVING_ZONE, color=color.MOVING_ZONE)
-
-    def create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
-        agent_width, agent_height = self.cfg.agent_cfg.size
-        self.agent_size = b2Vec2(agent_width, agent_height)
-
-        # setting random initial position
-        if agent_pos is None:
-            r = self.agent_size.length
-            try:
-                x = random.randint(int(r), int(self.world_width - r))
-                y = random.randint(int(r),
-                                   int(self.world_height - r))
-            except ValueError:
-                assert False and "There is no space to spawn the agent, modify world sizes"
-            agent_pos = b2Vec2(x, y)
-
-        # setting random initial angle
-        if agent_angle is None:
-            agent_angle = random.random() * (2*math.pi)
-
-        self.agent_body: b2Body = self.world.CreateDynamicBody(
-            position=agent_pos, angle=agent_angle)
-        self.agent_fix: b2Fixture = self.agent_body.CreatePolygonFixture(
-            box=(agent_width, agent_height), density=self.cfg.agent_cfg.density, friction=self.cfg.agent_cfg.friction)
-
-        self.agent_body.userData = self.get_agent_data()
-
-        self.agent_fix.body.angularDamping = self.cfg.agent_cfg.ang_damp
-        self.agent_fix.body.linearDamping = self.cfg.agent_cfg.lin_damp
-
-    # TODO: support colors, circles
-    def create_static_obstacle(self, pos, size, angle=0):
-        body: b2Body = self.world.CreateStaticBody(
-            position=pos, angle=angle
-        )
-        fixture: b2Fixture = body.CreatePolygonFixture(
-            box=size)
-
-        body.userData = self.get_static_obstacle_data()
-        return body
-
-    def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
-        body: b2Body = self.world.CreateDynamicBody(
-            position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
-            bullet=False, )
-        _: b2Fixture = body.CreatePolygonFixture(
-            box=size, density=1)
-
-        body.userData = self.get_moving_obstacle_data()
-        return body
-
-    def create_static_zone(self, pos, size, angle=0):
-        body: b2Body = self.world.CreateStaticBody(
-            position=pos, angle=angle)
-        fixture: b2Fixture = body.CreatePolygonFixture(
-            box=size)
-        fixture.sensor = True
-
-        body.userData = self.get_static_zone_data()
-        return body
-
-    def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
-        body: b2Body = self.world.CreateDynamicBody(
-            position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
-            bullet=False)
-        fixture: b2Fixture = body.CreatePolygonFixture(
-            box=size)
-
-        fixture.sensor = True
-
-        body.userData = self.get_moving_zone_data()
-        return body
 
     # user functions
     def get_world_size(self) -> tuple:

@@ -1,8 +1,8 @@
+from dbm import dumb
 import json
 import logging
 import math
 import random
-from dataclasses import dataclass
 from enum import IntEnum
 from logging import info
 from time import sleep
@@ -189,30 +189,34 @@ class BoxUI():
         b2Vec2(text_surface.get_size())
         self.screen.blit(text_surface, pos)
 
-    def copy_design_data(self):
-        design_dict: Dict[str,
-                          DesignData] = self.design_data.__dict__  # pointer
-        design_data: Dict[str, DesignData] = dict()
+    def copy_design_bodies(self):
+        design = list()
 
-        # checking for fields that need to be copied manually
-        for key in list(design_dict.keys()):
-            # b2Vec2
-            if type(design_dict[key]) is b2Vec2:
-                design_data[key] = (design_dict['key'].copy())
-            # list of b2Vec2
-            elif isinstance(design_dict[key], list) and all(isinstance(val, b2Vec2) for val in design_dict[key]):
-                design_data[key] = list()
-                for val in design_dict[key]:
-                    design_data[key].append(val.copy())
-            # dictionary
-            elif isinstance(design_dict[key], dict):
-                design_data[key] = design_dict[key].copy()
-            else:
-                design_data[key] = design_dict[key]
+        for body in self.design_bodies:
+            design_dict: Dict[str,
+                            DesignData] = body.__dict__  # pointer
+            design_data: Dict[str, DesignData] = dict()
 
-        design_data = DesignData(**design_data)
+            # checking for fields that need to be copied manually
+            for key in list(design_dict.keys()):
+                # b2Vec2
+                if type(design_dict[key]) is b2Vec2:
+                    design_data[key] = (design_dict['key'].copy())
+                # list of b2Vec2
+                elif isinstance(design_dict[key], list) and all(isinstance(val, b2Vec2) for val in design_dict[key]):
+                    design_data[key] = list()
+                    for val in design_dict[key]:
+                        design_data[key].append(val.copy())
+                # dictionary
+                elif isinstance(design_dict[key], dict):
+                    design_data[key] = design_dict[key].copy()
+                else:
+                    design_data[key] = design_dict[key]
 
-        return design_data
+            design_data = DesignData(**design_data)
+            design.append(design_data)
+
+        return design
 
     def get_design_data(self, set_type=SetType.DEFAULT):
         design_data = DesignData()
@@ -564,11 +568,10 @@ class BoxUI():
         self.design_data.color = self.env.get_data(
             self.design_data.params["type"]).color
 
-    def save_design(self, filename):
+    def designs_to_dicts(self, designs):
         # db as design bodies since it's just a different
         # format for the same thing
-        db = [list(body.__dict__.items()) for body in (self.design_bodies)]
-
+        db = [list(body.__dict__.items()) for body in (designs)]
         # design bodies to be dumpes as json
         dump_db = list()
         for bix, body in enumerate(db):
@@ -598,8 +601,10 @@ class BoxUI():
                     dump_db[bix][dix].append(value)
 
         dump_db = [dict(body) for body in dump_db]
+        return dump_db
 
-        # TODO: better name for json
+    def save_design(self, filename):
+        dump_db = self.designs_to_dicts(self.design_bodies)
         try:
             with open(filename, "w") as f:
                 json.dump(dump_db, f)
