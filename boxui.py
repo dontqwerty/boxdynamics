@@ -454,9 +454,10 @@ class BoxUI():
                     # toggles between already created design bodies
                     # in order to modify them
                     # TODO: make it better
-                    self.toggle_design_body()
-                    if self.mode != Mode.RESIZE:
-                        self.set_mode(Mode.RESIZE)
+                    if self.mode in (Mode.ROTATE, Mode.MOVE, Mode.RESIZE):
+                        self.toggle_design_body()
+                        if self.mode != Mode.RESIZE:
+                            self.set_mode(Mode.RESIZE)
                 # 4 - scroll up
                 elif event.button == 4:
                     if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):

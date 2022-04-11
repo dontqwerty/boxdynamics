@@ -112,7 +112,7 @@ class BoxEnv(gym.Env):
 
         self.observation_keys = ["distances"]
 
-        self.observation_space = gym.spaces.Dict(self.__get_observation_dict())
+        self.observation_space = gym.spaces.Dict(self.get_observation_dict())
 
         self.screen_layout = ScreenLayout()
         self.ui = BoxUI(self, self.screen_layout,
@@ -150,7 +150,7 @@ class BoxEnv(gym.Env):
         # calculate agent head point
         # TODO: support circles
         # TODO: support agent_head definition from outside class
-        self.__update_agent_head()
+        self.update_agent_head()
 
         self.perform_action(action)
 
@@ -162,7 +162,7 @@ class BoxEnv(gym.Env):
         self.world.ClearForces()
 
         # current and previous state
-        self.state = self.__get_observations()
+        self.state = self.get_observations()
         assert self.state in self.observation_space
         self.prev_state = self.state
 
@@ -206,7 +206,7 @@ class BoxEnv(gym.Env):
         self.action = b2Vec2(0, 0)
         if self.manual_mode:
             mouse_pos = b2Vec2(pg.mouse.get_pos())
-            self.action = self.__world_coord(
+            self.action = self.world_coord(
                 mouse_pos) - self.agent_body.position
         elif action is not None:
             # calculating where to apply force
@@ -225,11 +225,11 @@ class BoxEnv(gym.Env):
             self.ui.user_input()
             self.ui.ui_sleep()
             self.render()
-        self.__create_from_design_data()
+        self.create_from_design_data()
 
-    def __create_from_design_data(self):
+    def create_from_design_data(self):
         for design in self.ui.design_bodies:
-            points = [self.__world_coord(point) for point in design.vertices]
+            points = [self.world_coord(point) for point in design.vertices]
             try:
                 line1 = get_line_eq(points[0], points[2])
                 line2 = get_line_eq(points[1], points[3])
@@ -242,7 +242,7 @@ class BoxEnv(gym.Env):
             size = (width, height)
             angle = -design.delta_angle
 
-            self.__create_body(pos, size, angle, design)
+            self.create_body(pos, size, angle, design)
 
         self.ui.design_bodies.clear()
 
@@ -258,7 +258,7 @@ class BoxEnv(gym.Env):
         body.fixtures[0].density = design_data.params["density"]
         body.fixtures[0].friction = design_data.params["friction"]
 
-    def __create_body(self, pos, size, angle, design_data: DesignData):
+    def create_body(self, pos, size, angle, design_data: DesignData):
         type = design_data.params["type"]
         if type == BodyType.STATIC_OBSTACLE:
             body = self.create_static_obstacle(pos, size, angle=angle)
@@ -278,7 +278,7 @@ class BoxEnv(gym.Env):
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key
-    def __get_observation_dict(self):
+    def get_observation_dict(self):
         observation_dict = dict()
 
         for key in self.observation_keys:
@@ -313,7 +313,7 @@ class BoxEnv(gym.Env):
     # returns a state wich is an "instance" of observation_space
     # here is defined how each observation key in the observation space
     # dict should be set
-    def __set_observation_dict(self):
+    def set_observation_dict(self):
         state = dict()
         for key in self.observation_keys:
             if key == "distances":
@@ -351,13 +351,13 @@ class BoxEnv(gym.Env):
 
         return state
 
-    def __get_observations(self):
+    def get_observations(self):
         self.data.clear()
 
         for delta_angle in range(self.conf.observation_num):
             # absolute angle for the observation vector
             # based on self.conf.observation_range
-            angle = self.__get_observation_angle(delta_angle)
+            angle = self.get_observation_angle(delta_angle)
 
             observation_end = (self.agent_head.x + math.cos(angle) * self.conf.observation_max_distance,
                                self.agent_head.y + math.sin(angle) * self.conf.observation_max_distance)
@@ -387,11 +387,11 @@ class BoxEnv(gym.Env):
             self.data.append(observation)
 
         # filter info and return observation space
-        state = self.__set_observation_dict()
+        state = self.set_observation_dict()
 
         return state
 
-    def __update_agent_head(self):
+    def update_agent_head(self):
         # TODO: define agent head types and let the user choose
         # TODO: use self.conf.agent_head_inside only of needed aka
         # use it only if agent head is on agent edges
@@ -402,7 +402,7 @@ class BoxEnv(gym.Env):
                 self.agent_body.angle) * (self.agent_size.x - self.conf.agent_head_inside)))
         # self.agent_head = self.agent_body.position
 
-    def __get_observation_angle(self, delta_angle):
+    def get_observation_angle(self, delta_angle):
         try:
             return self.agent_body.angle - (self.conf.observation_range / 2) + (self.conf.observation_range / (self.conf.observation_num - 1) * delta_angle)
         except ZeroDivisionError:
@@ -410,13 +410,13 @@ class BoxEnv(gym.Env):
 
     def create_world(self):
         # adding world borders
-        self.__create_borders()
+        self.create_borders()
 
         # adding dynamic body for RL agent
         # TODO: support agent parameters from ouside class
-        self.__create_agent()
+        self.create_agent()
 
-    def __create_borders(self):
+    def create_borders(self):
         inside = 0.0  # defines how much of the borders are visible
 
         # TODO: border reward
@@ -497,7 +497,7 @@ class BoxEnv(gym.Env):
         return BodyData(
             type=BodyType.MOVING_ZONE, color=color.MOVING_ZONE)
 
-    def __create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
+    def create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
         agent_width, agent_height = agent_size
         self.agent_size = b2Vec2(agent_width, agent_height)
 
@@ -575,5 +575,5 @@ class BoxEnv(gym.Env):
     def get_world_size(self) -> tuple:
         return self.world_width, self.world_height
 
-    def __world_coord(self, point: b2Vec2) -> b2Vec2:
+    def world_coord(self, point: b2Vec2) -> b2Vec2:
         return b2Vec2(point.x / self.conf.ppm, (self.screen_height - point.y) / self.conf.ppm) - self.world_pos
