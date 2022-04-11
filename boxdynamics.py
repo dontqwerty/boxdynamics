@@ -9,30 +9,37 @@ from typing import Dict, List
 import gym
 import numpy as np
 import pygame as pg
-from Box2D import (b2Body, b2Fixture, b2PolygonShape, b2Vec2, b2World)
+from Box2D import b2Body, b2Fixture, b2PolygonShape, b2Vec2, b2World
 
 import boxcolors as color
 from boxcontacts import ContactListener
-from boxdef import BodyShape, BodyType, EffectType
+from boxdef import (BodyShape, BodyType, DesignData, EffectType, ScreenLayout,
+                    UIMode)
 from boxraycast import RayCastClosestCallback
-from boxui import BoxUI, DesignData, Mode, ScreenLayout
+from boxui import BoxUI
 from boxutils import get_intersection, get_line_eq
 
 
+class AgentHeadType(IntEnum):
+    CENTER = 0
+    EDGE = 1
+
+
 @dataclass
-class EnvConfig:
-    target_fps: float = 60
-    time_step: float = 1.0 / target_fps
-    ppm: float = 10  # pixel per meter
+class AgentCfg:
+    size: tuple = (1, 1)
+    density: float = 0.2  # kg
 
-    # world
-    boundaries_width: float = 10  # meters
+    # agent frictions
+    ang_damp: float = 2
+    lin_damp: float = 0.1
+    friction: float = 0.0
 
-    # velocity and position iterations
-    # higher values improve precision in
-    # physics simulations
-    vel_iter: int = 6
-    pos_iter: int = 2
+    # head
+    head: AgentHeadType = AgentHeadType.EDGE
+
+    # corrections
+    head_inside: float = 0.2
 
     # action space
     min_angle: float = -math.pi * 3 / 4  # radians
@@ -42,19 +49,30 @@ class EnvConfig:
     max_force: float = 8
 
     # observation space
-    observation_range: float = math.pi - math.pi/8  # 2*math.pi
-    observation_max_distance: float = 1000  # how far can the agent see
-    observation_num: int = 20  # number of distance vectors
+    obs_range: float = math.pi - math.pi/8  # 2*math.pi
+    obs_max_dist: float = 1000  # how far can the agent see
+    obs_num: int = 20  # number of distance vectors
+    obs_keys: List = field(default_factory=list)
 
-    # agent frictions
-    agent_angular_damping: float = 2
-    agent_linear_damping: float = 0.1
 
-    # corrections
-    agent_head_inside: float = 0.2
+@dataclass
+class EnvCfg:
+    target_fps: float = 60
+    time_step: float = 1.0 / target_fps
+    ppm: float = 10  # pixel per meter
 
-    # objects
-    agent_mass: float = 0.2  # kg
+    # world
+    create_boundaries: bool = True
+    boundaries_width: float = 10  # meters
+
+    # velocity and position iterations
+    # higher values improve precision in
+    # physics simulations
+    vel_iter: int = 6
+    pos_iter: int = 2
+
+    agent_cfg: AgentCfg = AgentCfg()
+    # design: Dsi
 
 
 @dataclass
@@ -84,7 +102,12 @@ class BoxEnv(gym.Env):
         # initializing base class
         super(BoxEnv, self).__init__()
 
-        self.conf = EnvConfig()
+        # setting configuration based on deafults
+        self.default_cfg()
+        # savinf configuration
+        # self.save_conf()
+        # loading enviroment configuration
+        self.load_conf()
 
         # world keeps track of objects and physics
         self.world = b2World(gravity=(0, 0), doSleep=True,
@@ -93,9 +116,9 @@ class BoxEnv(gym.Env):
         # action space
         # relative agent_angle, force
         self.action_space = gym.spaces.Box(
-            np.array([self.conf.min_angle, self.conf.min_force]
+            np.array([self.cfg.agent_cfg.min_angle, self.cfg.agent_cfg.min_force]
                      ).astype(np.float32),
-            np.array([self.conf.max_angle, self.conf.max_force]
+            np.array([self.cfg.agent_cfg.max_angle, self.cfg.agent_cfg.max_force]
                      ).astype(np.float32)
         )
 
@@ -106,25 +129,23 @@ class BoxEnv(gym.Env):
         self.manual_mode = False
 
         # TODO: contacts
-        # the observation spaces is defined by observation_keys
-        self.observation_keys = ["distances",
-                                 "body_types", "position", "contacts", "body_velocities", "linear_velocity", "velocity_mag"]
-
-        self.observation_keys = ["distances"]
+        # the observation spaces is defined by agent_cfg.obs_keys
+        # self.cfg.agent_cfg.obs_keys = ["distances",
+        #                          "body_types", "position", "contacts", "body_velocities", "linear_velocity", "velocity_mag"]
 
         self.observation_space = gym.spaces.Dict(self.get_observation_dict())
 
         self.screen_layout = ScreenLayout()
         self.ui = BoxUI(self, self.screen_layout,
-                        self.conf.ppm, self.conf.target_fps)
+                        self.cfg.ppm, self.cfg.target_fps)
 
         self.screen_width = self.screen_layout.width
         self.screen_height = self.screen_layout.height
 
-        self.world_width = self.screen_layout.simulation_size.x / self.conf.ppm
-        self.world_height = self.screen_layout.simulation_size.y / self.conf.ppm
+        self.world_width = self.screen_layout.simulation_size.x / self.cfg.ppm
+        self.world_height = self.screen_layout.simulation_size.y / self.cfg.ppm
         self.world_pos = b2Vec2(self.screen_layout.simulation_pos.x, self.screen_height -
-                                self.screen_layout.simulation_pos.y) / self.conf.ppm - b2Vec2(0, self.world_height)
+                                self.screen_layout.simulation_pos.y) / self.cfg.ppm - b2Vec2(0, self.world_height)
 
         # it's like the observation space but with more informations
         # list of Observation dataclasses
@@ -149,14 +170,13 @@ class BoxEnv(gym.Env):
     def step(self, action) -> tuple:
         # calculate agent head point
         # TODO: support circles
-        # TODO: support agent_head definition from outside class
         self.update_agent_head()
 
         self.perform_action(action)
 
         # Make Box2D simulate the physics of our world for one step.
-        self.world.Step(self.conf.time_step,
-                        self.conf.vel_iter, self.conf.pos_iter)
+        self.world.Step(self.cfg.time_step,
+                        self.cfg.vel_iter, self.cfg.pos_iter)
 
         # clear forces or they will stay permanently
         self.world.ClearForces()
@@ -186,14 +206,21 @@ class BoxEnv(gym.Env):
             self.world.DestroyBody(body)
         self.ui.quit()
 
+    def default_cfg(self):
+        self.cfg = EnvCfg()
+        self.cfg.agent_cfg.obs_keys = ["distances", "body_types", "position",
+                                        "contacts", "body_velocities", "linear_velocity", "velocity_mag"]
+        pass
+
     def save_conf(self, filename="config.json"):
         with open(filename, "w") as f:
-            json.dump(asdict(self.conf), f)
+            json.dump(asdict(self.cfg), f)
         pass
 
     def load_conf(self, filename="config.json"):
         with open(filename, "r") as f:
-            self.conf = EnvConfig(**json.load(f))
+            self.cfg = EnvCfg(**json.load(f))
+        self.cfg.agent_cfg = AgentCfg(**self.cfg.agent_cfg)
         pass
 
     def set_reward(self):
@@ -220,8 +247,8 @@ class BoxEnv(gym.Env):
             force=self.action, point=self.agent_head, wake=True)
 
     def world_design(self):
-        self.ui.set_mode(Mode.RESIZE)
-        while self.ui.mode != Mode.SIMULATION:
+        self.ui.set_mode(UIMode.RESIZE)
+        while self.ui.mode != UIMode.SIMULATION:
             self.ui.user_input()
             self.ui.ui_sleep()
             self.render()
@@ -281,17 +308,17 @@ class BoxEnv(gym.Env):
     def get_observation_dict(self):
         observation_dict = dict()
 
-        for key in self.observation_keys:
+        for key in self.cfg.agent_cfg.obs_keys:
             partial_dict = dict()
             if key == "distances":
                 partial_dict = ({"distances": gym.spaces.Box(
-                    low=0, high=np.inf, shape=(self.conf.observation_num,))})
+                    low=0, high=np.inf, shape=(self.cfg.agent_cfg.obs_num,))})
             elif key == "body_types":
                 partial_dict = ({"body_types": gym.spaces.Tuple(
-                    ([gym.spaces.Discrete(len(BodyType))]*self.conf.observation_num))})
+                    ([gym.spaces.Discrete(len(BodyType))]*self.cfg.agent_cfg.obs_num))})
             elif key == "body_velocities":
                 partial_dict = ({"body_velocities": gym.spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(self.conf.observation_num, 2, ))})
+                    low=-np.inf, high=np.inf, shape=(self.cfg.agent_cfg.obs_num, 2, ))})
             elif key == "position":
                 partial_dict = ({"position": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(2,))})
@@ -315,7 +342,7 @@ class BoxEnv(gym.Env):
     # dict should be set
     def set_observation_dict(self):
         state = dict()
-        for key in self.observation_keys:
+        for key in self.cfg.agent_cfg.obs_keys:
             if key == "distances":
                 state["distances"] = np.array(
                     [observation.distance for observation in self.data], dtype=np.float32)
@@ -354,13 +381,13 @@ class BoxEnv(gym.Env):
     def get_observations(self):
         self.data.clear()
 
-        for delta_angle in range(self.conf.observation_num):
+        for delta_angle in range(self.cfg.agent_cfg.obs_num):
             # absolute angle for the observation vector
-            # based on self.conf.observation_range
+            # based on self.cfg.agent_cfg.obs_range
             angle = self.get_observation_angle(delta_angle)
 
-            observation_end = (self.agent_head.x + math.cos(angle) * self.conf.observation_max_distance,
-                               self.agent_head.y + math.sin(angle) * self.conf.observation_max_distance)
+            observation_end = (self.agent_head.x + math.cos(angle) * self.cfg.agent_cfg.obs_max_dist,
+                               self.agent_head.y + math.sin(angle) * self.cfg.agent_cfg.obs_max_dist)
 
             callback = RayCastClosestCallback()
 
@@ -392,19 +419,18 @@ class BoxEnv(gym.Env):
         return state
 
     def update_agent_head(self):
-        # TODO: define agent head types and let the user choose
-        # TODO: use self.conf.agent_head_inside only of needed aka
-        # use it only if agent head is on agent edges
-        self.agent_head = b2Vec2(
-            (self.agent_body.position.x + math.cos(
-                self.agent_body.angle) * (self.agent_size.x - self.conf.agent_head_inside)),
-            (self.agent_body.position.y + math.sin(
-                self.agent_body.angle) * (self.agent_size.x - self.conf.agent_head_inside)))
-        # self.agent_head = self.agent_body.position
+        if self.cfg.agent_cfg.head == AgentHeadType.EDGE:
+            self.agent_head = b2Vec2(
+                (self.agent_body.position.x + math.cos(
+                    self.agent_body.angle) * (self.agent_size.x - self.cfg.agent_cfg.head_inside)),
+                (self.agent_body.position.y + math.sin(
+                    self.agent_body.angle) * (self.agent_size.x - self.cfg.agent_cfg.head_inside)))
+        elif self.cfg.agent_cfg.head == AgentHeadType.CENTER:
+            self.agent_head = self.agent_body.position
 
     def get_observation_angle(self, delta_angle):
         try:
-            return self.agent_body.angle - (self.conf.observation_range / 2) + (self.conf.observation_range / (self.conf.observation_num - 1) * delta_angle)
+            return self.agent_body.angle - (self.cfg.agent_cfg.obs_range / 2) + (self.cfg.agent_cfg.obs_range / (self.cfg.agent_cfg.obs_num - 1) * delta_angle)
         except ZeroDivisionError:
             return self.agent_body.angle
 
@@ -422,38 +448,38 @@ class BoxEnv(gym.Env):
         # TODO: border reward
 
         pos = b2Vec2(self.world_width / 2, inside -
-                     (self.conf.boundaries_width / 2))
+                     (self.cfg.boundaries_width / 2))
         self.bottom_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
-                box=(self.world_width / 2 + self.conf.boundaries_width, self.conf.boundaries_width / 2)),
+                box=(self.world_width / 2 + self.cfg.boundaries_width, self.cfg.boundaries_width / 2)),
             userData=self.get_border_data()
         )
 
         pos = b2Vec2(self.world_width / 2, self.world_height -
-                     inside + (self.conf.boundaries_width / 2))
+                     inside + (self.cfg.boundaries_width / 2))
         self.top_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
-                box=(self.world_width / 2 + self.conf.boundaries_width, self.conf.boundaries_width / 2)),
+                box=(self.world_width / 2 + self.cfg.boundaries_width, self.cfg.boundaries_width / 2)),
             userData=self.get_border_data()
         )
 
-        pos = b2Vec2(inside - (self.conf.boundaries_width / 2),
+        pos = b2Vec2(inside - (self.cfg.boundaries_width / 2),
                      self.world_height / 2)
         self.left_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
-                box=(self.conf.boundaries_width / 2, self.world_height / 2 + self.conf.boundaries_width)),
+                box=(self.cfg.boundaries_width / 2, self.world_height / 2 + self.cfg.boundaries_width)),
             userData=self.get_border_data()
         )
 
         pos = b2Vec2(self.world_width - inside +
-                     (self.conf.boundaries_width / 2), self.world_height / 2)
+                     (self.cfg.boundaries_width / 2), self.world_height / 2)
         self.right_border: b2Body = self.world.CreateStaticBody(
             position=pos,
             shapes=b2PolygonShape(
-                box=(self.conf.boundaries_width / 2, self.world_height / 2 + self.conf.boundaries_width)),
+                box=(self.cfg.boundaries_width / 2, self.world_height / 2 + self.cfg.boundaries_width)),
             userData=self.get_border_data()
         )
 
@@ -498,7 +524,7 @@ class BoxEnv(gym.Env):
             type=BodyType.MOVING_ZONE, color=color.MOVING_ZONE)
 
     def create_agent(self, agent_size=(1, 1), agent_pos=None, agent_angle=None):
-        agent_width, agent_height = agent_size
+        agent_width, agent_height = self.cfg.agent_cfg.size
         self.agent_size = b2Vec2(agent_width, agent_height)
 
         # setting random initial position
@@ -516,17 +542,15 @@ class BoxEnv(gym.Env):
         if agent_angle is None:
             agent_angle = random.random() * (2*math.pi)
 
-        area = agent_width * agent_height
-
         self.agent_body: b2Body = self.world.CreateDynamicBody(
             position=agent_pos, angle=agent_angle)
         self.agent_fix: b2Fixture = self.agent_body.CreatePolygonFixture(
-            box=(agent_width, agent_height), density=self.conf.agent_mass/area)
+            box=(agent_width, agent_height), density=self.cfg.agent_cfg.density, friction=self.cfg.agent_cfg.friction)
 
         self.agent_body.userData = self.get_agent_data()
 
-        self.agent_fix.body.angularDamping = self.conf.agent_angular_damping
-        self.agent_fix.body.linearDamping = self.conf.agent_linear_damping
+        self.agent_fix.body.angularDamping = self.cfg.agent_cfg.ang_damp
+        self.agent_fix.body.linearDamping = self.cfg.agent_cfg.lin_damp
 
     # TODO: support colors, circles
     def create_static_obstacle(self, pos, size, angle=0):
@@ -576,4 +600,4 @@ class BoxEnv(gym.Env):
         return self.world_width, self.world_height
 
     def world_coord(self, point: b2Vec2) -> b2Vec2:
-        return b2Vec2(point.x / self.conf.ppm, (self.screen_height - point.y) / self.conf.ppm) - self.world_pos
+        return b2Vec2(point.x / self.cfg.ppm, (self.screen_height - point.y) / self.cfg.ppm) - self.world_pos

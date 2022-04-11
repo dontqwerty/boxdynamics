@@ -2,7 +2,7 @@ import json
 import logging
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 from logging import info
 from time import sleep
@@ -13,74 +13,17 @@ import pygame as pg
 from Box2D import b2Body, b2Vec2
 
 import boxcolors
-from boxdef import BodyShape, BodyType, EffectType
+from boxdef import (BodyShape, BodyType, DesignData, EffectType, ScreenLayout,
+                    UIMode)
 from boxutils import get_intersection, get_line_eq_angle
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world
-
-
-class Mode(IntEnum):
-    NONE = 0
-    RESIZE = 1
-    ROTATE = 2
-    MOVE = 8
-    SIMULATION = 3
-    INPUT_SAVE = 4
-    INPUT_LOAD = 5
-    QUIT_CONFIRMATION = 6
-    USE_CONFIRMATION = 7
 
 
 class SetType(IntEnum):
     DEFAULT = 0
     PREVIOUS = 1
     RANDOM = 2
-
-
-@dataclass
-class ScreenLayout:
-    width: int = 1000  # pixels
-    height: int = 800
-    size: b2Vec2 = b2Vec2(width, height)
-    simulation_xshift: int = width / 4
-    simulation_yshift: int = 0
-    simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
-    simulation_size: b2Vec2 = b2Vec2(
-        width - simulation_xshift, height - simulation_yshift)
-    board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
-    board_size: b2Vec2 = b2Vec2(width, height) * 0
-    popup_size: b2Vec2 = b2Vec2(150, 60)
-    popup_pos: b2Vec2 = (b2Vec2(width, height) - popup_size / 2) / 2
-    small_font: int = 14
-    normal_font: int = 20
-    big_font: int = 32
-
-
-@dataclass
-class DesignData:
-    selected: bool = False  # TODO: selectable
-
-    # center and radius for circles
-    points: List[b2Vec2] = field(default_factory=list)
-    # all four vertices for rectangles
-    vertices: List[b2Vec2] = field(default_factory=list)
-    # body rotation
-    rotated: bool = False
-    init_vertices: List[b2Vec2] = field(default_factory=list)
-    initial_angle: float = 0.0
-    delta_angle: float = 0.0
-
-    shape: IntEnum = BodyShape.BOX  # TODO: circles
-    # TODO: toggle color
-    color: tuple = field(default=boxcolors.STATIC_OBSTACLE)
-
-    # type: IntEnum = BodyType.STATIC_OBSTACLE
-    params: Dict = field(default_factory=dict)
-    # indicates which param to currently change
-    params_ix: int = 0
-    float_inc: float = 0.1
-
-    effect: Dict = field(default_factory=dict)
 
 
 class BoxUI():
@@ -92,8 +35,8 @@ class BoxUI():
 
         # only setting mode this way here
         # use set_mode everywhere else
-        self.mode = Mode.NONE
-        self.prev_mode = Mode.NONE
+        self.mode = UIMode.NONE
+        self.prev_mode = UIMode.NONE
 
         self.design_bodies: List[DesignData] = list()
 
@@ -151,10 +94,11 @@ class BoxUI():
         # TODO: signal quitting to BoxEnv
         exit()
 
-    def set_mode(self, mode: Mode):
+    def set_mode(self, mode: UIMode):
         self.prev_mode = self.mode
         self.mode = mode
-        info("Old mode {}, new mode {}".format(self.prev_mode.name, self.mode.name))
+        info("Old mode {}, new mode {}".format(
+            self.prev_mode.name, self.mode.name))
 
     def render(self):
         self.screen.fill(boxcolors.BACK)
@@ -175,26 +119,26 @@ class BoxUI():
 
         # TODO: fix that when designing and quit confirmation is asked
         # the observation vectors of the agente can be seen
-        if self.mode == Mode.SIMULATION or (self.prev_mode == Mode.SIMULATION and self.mode == Mode.QUIT_CONFIRMATION):
+        if self.mode == UIMode.SIMULATION or (self.prev_mode == UIMode.SIMULATION and self.mode == UIMode.QUIT_CONFIRMATION):
             self.render_action()
             self.render_observations()
             self.draw_distances()
-        if self.mode in (Mode.RESIZE,
-                        Mode.MOVE,
-                        Mode.ROTATE,
-                        Mode.INPUT_LOAD,
-                        Mode.INPUT_SAVE,
-                        Mode.USE_CONFIRMATION) or \
-                    (self.prev_mode == Mode.RESIZE and \
-                        self.mode == Mode.QUIT_CONFIRMATION):
+        if self.mode in (UIMode.RESIZE,
+                         UIMode.MOVE,
+                         UIMode.ROTATE,
+                         UIMode.INPUT_LOAD,
+                         UIMode.INPUT_SAVE,
+                         UIMode.USE_CONFIRMATION) or \
+            (self.prev_mode == UIMode.RESIZE and
+             self.mode == UIMode.QUIT_CONFIRMATION):
             self.render_design()
-            if self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE):
+            if self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE):
                 self.render_input()
         self.render_world()
 
-        if self.mode == Mode.QUIT_CONFIRMATION:
+        if self.mode == UIMode.QUIT_CONFIRMATION:
             self.render_confirmation("QUIT")
-        elif self.mode == Mode.USE_CONFIRMATION:
+        elif self.mode == UIMode.USE_CONFIRMATION:
             self.render_confirmation("USE")
         pg.display.flip()
         self.clock.tick(self.target_fps)
@@ -286,14 +230,14 @@ class BoxUI():
                                   "lin_damping": 0.0,
                                   "ang_damping": 0.0}
             design_data.effect = {"type": EffectType.APPLY_FORCE,
-                                  "value": [10, 10]} # TODO: let value be choosen at runtime
+                                  "value": [10, 10]}  # TODO: let value be choosen at runtime
         elif set_type == SetType.PREVIOUS:
             design_data.params = self.design_data.params.copy()
         elif set_type == SetType.RANDOM:
             types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE,
                      BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
             design_data.params = {"type": random.choice(types),
-            # design_data.params = {"type": BodyType(random.choice(types)),
+                                  # design_data.params = {"type": BodyType(random.choice(types)),
                                   "reward": random.uniform(-1, 1),
                                   "level": 0,
                                   "lin_velocity": random.uniform(0, 10),
@@ -312,11 +256,11 @@ class BoxUI():
     def user_input(self):
         for event in pg.event.get():
             if event.type == pg.KEYDOWN:
-                if self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE):
+                if self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE):
                     if event.key == pg.K_RETURN:
-                        if self.mode == Mode.INPUT_SAVE:
+                        if self.mode == UIMode.INPUT_SAVE:
                             self.save_design(self.text_input)
-                        elif self.mode == Mode.INPUT_LOAD:
+                        elif self.mode == UIMode.INPUT_LOAD:
                             self.load_design(self.text_input)
                         self.text_input = ""
                         self.set_mode(self.prev_mode)
@@ -335,20 +279,20 @@ class BoxUI():
                     # TODO: uncomment for confirmation
                     # if self.user_confirmation():
                     # self.quit()
-                    if self.mode in (Mode.QUIT_CONFIRMATION, Mode.USE_CONFIRMATION):
+                    if self.mode in (UIMode.QUIT_CONFIRMATION, UIMode.USE_CONFIRMATION):
                         # not confirmed, back to prev mode
                         self.set_mode(self.prev_mode)
                     else:
                         # asking user for confirmation
-                        self.set_mode(Mode.QUIT_CONFIRMATION)
+                        self.set_mode(UIMode.QUIT_CONFIRMATION)
 
                 elif event.key == pg.K_RETURN:
-                    if self.mode == Mode.QUIT_CONFIRMATION:
+                    if self.mode == UIMode.QUIT_CONFIRMATION:
                         # quit confirmed
                         self.quit()
-                    elif self.mode == Mode.USE_CONFIRMATION:
+                    elif self.mode == UIMode.USE_CONFIRMATION:
                         # use confirmed
-                        self.set_mode(Mode.SIMULATION)
+                        self.set_mode(UIMode.SIMULATION)
 
                 elif event.type == pg.QUIT:
                     # exit
@@ -362,71 +306,72 @@ class BoxUI():
                         self.design_bodies.pop()
                     except IndexError:
                         pass
-                    self.design_data = self.get_design_data(set_type=self.set_type)
+                    self.design_data = self.get_design_data(
+                        set_type=self.set_type)
                 elif event.key == pg.K_LSHIFT:
                     self.reverse_toggle = True
                     pass
                 # elif event.key == pg.K_c:
-                #     if self.mode in (Mode.RESIZE, Mode.ROTATE):
+                #     if self.mode in (UIMode.RESIZE, UIMode.ROTATE):
                 #         # TODO: toggle shape
                 #         self.design_data.shape = BodyShape.BOX
                 #         pass
                 elif event.key == pg.K_s:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # asking to input file name
-                        self.set_mode(Mode.INPUT_SAVE)
+                        self.set_mode(UIMode.INPUT_SAVE)
                     pass
                 elif event.key == pg.K_l:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
-                        self.set_mode(Mode.INPUT_LOAD)
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                        self.set_mode(UIMode.INPUT_LOAD)
                     pass
                 elif event.key == pg.K_u:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # use created world
-                        self.set_mode(Mode.USE_CONFIRMATION)
+                        self.set_mode(UIMode.USE_CONFIRMATION)
                     pass
                 elif event.key == pg.K_m:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE):
                         # moving body
                         self.move(first=True)
-                    elif self.mode == Mode.MOVE:
-                        self.set_mode(Mode.RESIZE)
-                    elif self.mode == Mode.SIMULATION:
+                    elif self.mode == UIMode.MOVE:
+                        self.set_mode(UIMode.RESIZE)
+                    elif self.mode == UIMode.SIMULATION:
                         self.env.manual_mode = not self.env.manual_mode
                     pass
                     pass
                 elif event.key == pg.K_a:
-                    if self.mode in (Mode.RESIZE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.MOVE):
                         # rotating body
                         points_num = len(self.design_data.points)
                         if points_num == 2 and self.design_data.shape == BodyShape.BOX:
                             self.rotate(first=True)
-                            self.set_mode(Mode.ROTATE)
-                    elif self.mode == Mode.ROTATE:
-                        self.set_mode(Mode.RESIZE)
+                            self.set_mode(UIMode.ROTATE)
+                    elif self.mode == UIMode.ROTATE:
+                        self.set_mode(UIMode.RESIZE)
                     pass
                 elif event.key == pg.K_UP:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase currently selected param
                         self.modify_param(increase=True)
                     pass
                 elif event.key == pg.K_DOWN:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # decrease currently selected param
                         self.modify_param(increase=False)
                     pass
                 elif event.key == pg.K_RIGHT:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase inc by factor 10
                         self.design_data.float_inc = self.design_data.float_inc * 10
                     pass
                 elif event.key == pg.K_LEFT:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # decrease inc by factor 10
                         self.design_data.float_inc = self.design_data.float_inc / 10
                     pass
                 elif event.key == pg.K_SPACE:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # toggle parameter to change
                         self.toggle_param()
                     pass
@@ -439,12 +384,12 @@ class BoxUI():
             elif event.type == pg.MOUSEBUTTONDOWN:
                 # 1 - left click
                 if event.button == 1:
-                    if self.mode == Mode.RESIZE:
+                    if self.mode == UIMode.RESIZE:
                         self.set_points(from_design=True)
-                    elif self.mode in (Mode.ROTATE, Mode.MOVE):
+                    elif self.mode in (UIMode.ROTATE, UIMode.MOVE):
                         self.set_points(from_design=False)
-                        self.set_mode(Mode.RESIZE)
-                    elif self.mode == Mode.SIMULATION:
+                        self.set_mode(UIMode.RESIZE)
+                    elif self.mode == UIMode.SIMULATION:
                         # TODO: check for mouse pos and perform action
                         # show body properties when clicked
                         # let user change level
@@ -454,27 +399,27 @@ class BoxUI():
                     # toggles between already created design bodies
                     # in order to modify them
                     # TODO: make it better
-                    if self.mode in (Mode.ROTATE, Mode.MOVE, Mode.RESIZE):
+                    if self.mode in (UIMode.ROTATE, UIMode.MOVE, UIMode.RESIZE):
                         self.toggle_design_body()
-                        if self.mode != Mode.RESIZE:
-                            self.set_mode(Mode.RESIZE)
+                        if self.mode != UIMode.RESIZE:
+                            self.set_mode(UIMode.RESIZE)
                 # 4 - scroll up
                 elif event.button == 4:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase currently selected param
                         self.modify_param(increase=True)
                 # 5 - scroll down
                 elif event.button == 5:
-                    if self.mode in (Mode.RESIZE, Mode.ROTATE, Mode.MOVE):
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase currently selected param
                         self.modify_param(increase=False)
                 pass
             elif event.type == pg.MOUSEMOTION:
-                if self.mode == Mode.RESIZE:
+                if self.mode == UIMode.RESIZE:
                     self.scale()
-                elif self.mode == Mode.ROTATE:
+                elif self.mode == UIMode.ROTATE:
                     self.rotate(first=False)
-                elif self.mode == Mode.MOVE:
+                elif self.mode == UIMode.MOVE:
                     self.move(first=False)
                     pass
                 pass
@@ -532,7 +477,7 @@ class BoxUI():
             points_num = len(self.design_data.points)
             if points_num == 2:
                 self.prev_mouse_pos = b2Vec2(pg.mouse.get_pos())
-                self.set_mode(Mode.MOVE)
+                self.set_mode(UIMode.MOVE)
         else:
             delta_mouse = mouse_pos - self.prev_mouse_pos
             # if self.prev_mouse_pos:
@@ -856,7 +801,7 @@ class BoxUI():
         for ix, s in enumerate(data):
             pos += b2Vec2(0, text_surface.get_height())
             # TODO: not ix hardcoded
-            if self.mode == Mode.ROTATE and ix == 2:
+            if self.mode == UIMode.ROTATE and ix == 2:
                 text_surface = text_font.render(
                     s, True, boxcolors.BLACK, boxcolors.GREEN)
             else:
@@ -936,7 +881,7 @@ class BoxUI():
 
     def set_commands(self):
         self.commands.clear()
-        if self.mode == Mode.RESIZE:
+        if self.mode == UIMode.RESIZE:
             self.commands = [{"key": "mouse click", "description": "fix point"},
                              {"key": "R", "description": "rectangle"},
                              {"key": "C", "description": "circle"},
@@ -951,14 +896,14 @@ class BoxUI():
                              {"key": "LEFT", "description": "decrease parameter inc"}]
             if self.design_data.shape == BodyShape.BOX:
                 self.commands.append({"key": "A", "description": "rotate"})
-        elif self.mode == Mode.ROTATE:
+        elif self.mode == UIMode.ROTATE:
             self.commands = [{"key": "A", "description": "finish rotating"},
                              {"key": "mouse movement", "description": "rotate"},
                              {"key": "mouse click", "description": "fix point"}]
-        elif self.mode == Mode.SIMULATION:
+        elif self.mode == UIMode.SIMULATION:
             self.commands = [{"key": "M", "description": "manual"}]
 
-        if self.mode not in (Mode.SIMULATION, Mode.NONE):
+        if self.mode not in (UIMode.SIMULATION, UIMode.NONE):
             self.commands.append(
                 {"key": "DEL", "description": "delete object"})
 
