@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass, field
 from enum import IntEnum
-from logging import debug, info
+from logging import info
 from time import sleep
 from typing import Dict, List
 
@@ -14,7 +14,7 @@ from Box2D import b2Body, b2Vec2
 
 import boxcolors
 from boxdef import BodyShape, BodyType, EffectType
-from boxutils import get_intersection, get_line_eq, get_line_eq_angle
+from boxutils import get_intersection, get_line_eq_angle
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
