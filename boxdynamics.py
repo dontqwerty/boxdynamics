@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import random
 from dataclasses import asdict, dataclass, field
 from enum import IntEnum
@@ -219,7 +220,7 @@ class BoxEnv(gym.Env):
             force=self.action, point=self.agent_head, wake=True)
 
     def world_design(self):
-        self.ui.set_mode(Mode.DESIGN)
+        self.ui.set_mode(Mode.RESIZE)
         while self.ui.mode != Mode.SIMULATION:
             self.ui.user_input()
             self.ui.ui_sleep()
