@@ -3,7 +3,7 @@ import logging
 import math
 import random
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import IntEnum
 from logging import debug, info
 from time import sleep
 from typing import Dict, List
@@ -13,13 +13,13 @@ import pygame as pg
 from Box2D import b2Body, b2Vec2
 
 import boxcolors
-from boxdef import BodyShape, BodyType
+from boxdef import BodyShape, BodyType, EffectType
 from boxutils import get_intersection, get_line_eq, get_line_eq_angle
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
 
-class Mode(Enum):
+class Mode(IntEnum):
     NONE = 0
     DESIGN = 1
     ROTATE = 2
@@ -31,7 +31,7 @@ class Mode(Enum):
     USE_CONFIRMATION = 7
 
 
-class SetType(Enum):
+class SetType(IntEnum):
     DEFAULT = 0
     PREVIOUS = 1
     RANDOM = 2
@@ -70,15 +70,17 @@ class DesignData:
     initial_angle: float = 0.0
     delta_angle: float = 0.0
 
-    shape: Enum = BodyShape.BOX  # TODO: circles
+    shape: IntEnum = BodyShape.BOX  # TODO: circles
     # TODO: toggle color
     color: tuple = field(default=boxcolors.STATIC_OBSTACLE)
 
-    # type: Enum = BodyType.STATIC_OBSTACLE
+    # type: IntEnum = BodyType.STATIC_OBSTACLE
     params: Dict = field(default_factory=dict)
     # indicates which param to currently change
     params_ix: int = 0
     float_inc: float = 0.1
+
+    effect: Dict = field(default_factory=dict)
 
 
 class BoxUI():
@@ -96,9 +98,10 @@ class BoxUI():
         self.design_bodies: List[DesignData] = list()
 
         # setting up design variables
-        self.set_design_data(set_type=SetType.DEFAULT)
-        self.set_type = SetType.PREVIOUS
+        self.design_data = self.get_design_data(set_type=SetType.DEFAULT)
         # self.set_type = SetType.DEFAULT
+        # self.set_type = SetType.PREVIOUS
+        self.set_type = SetType.RANDOM
 
         # pg setup
         self.screen = pg.display.set_mode(
@@ -148,7 +151,7 @@ class BoxUI():
     def set_mode(self, mode: Mode):
         self.prev_mode = self.mode
         self.mode = mode
-        info("Old mode {}, new mode {}".format(self.prev_mode, self.mode))
+        info("Old mode {}, new mode {}".format(self.prev_mode.name, self.mode.name))
 
     def render(self):
         self.screen.fill(boxcolors.BACK)
@@ -167,23 +170,29 @@ class BoxUI():
 
         self.render_commands()
 
-        self.render_world()
-
         # TODO: fix that when designing and quit confirmation is asked
         # the observation vectors of the agente can be seen
-        if self.mode in (Mode.SIMULATION, Mode.QUIT_CONFIRMATION):
+        if self.mode == Mode.SIMULATION or (self.prev_mode == Mode.SIMULATION and self.mode == Mode.QUIT_CONFIRMATION):
             self.render_action()
             self.render_observations()
             self.draw_distances()
-            if self.mode == Mode.QUIT_CONFIRMATION:
-                self.render_confirmation()
-        elif self.mode not in (Mode.SIMULATION, Mode.NONE):
+        if self.mode in (Mode.DESIGN,
+                        Mode.MOVE,
+                        Mode.ROTATE,
+                        Mode.INPUT_LOAD,
+                        Mode.INPUT_SAVE,
+                        Mode.USE_CONFIRMATION) or \
+                    (self.prev_mode == Mode.DESIGN and \
+                        self.mode == Mode.QUIT_CONFIRMATION):
             self.render_design()
-            if self.mode == Mode.USE_CONFIRMATION:
-                self.render_confirmation()
-            elif self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE):
+            if self.mode in (Mode.INPUT_LOAD, Mode.INPUT_SAVE):
                 self.render_input()
+        self.render_world()
 
+        if self.mode == Mode.QUIT_CONFIRMATION:
+            self.render_confirmation("QUIT")
+        elif self.mode == Mode.USE_CONFIRMATION:
+            self.render_confirmation("USE")
         pg.display.flip()
         self.clock.tick(self.target_fps)
         pass
@@ -195,7 +204,7 @@ class BoxUI():
                              self.layout.popup_size.x,
                              self.layout.popup_size.y), width=4)
 
-    def render_confirmation(self):
+    def render_confirmation(self, msg=""):
         self.render_popup()
 
         text_font = pg.font.SysFont(
@@ -204,7 +213,7 @@ class BoxUI():
         # text
         pos = self.layout.popup_pos + \
             (self.layout.popup_size - self.popup_msg_size) / 2
-        s = "CONFIRM?"
+        s = "CONFIRM " + str(msg)
         text_surface = text_font.render(
             s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.popup_msg_size = b2Vec2(text_surface.get_size())
@@ -258,13 +267,14 @@ class BoxUI():
 
         return design_data
 
-    def set_design_data(self, set_type=SetType.DEFAULT):
+    def get_design_data(self, set_type=SetType.DEFAULT):
         design_data = DesignData()
+        # use copiable data types
         if set_type == SetType.DEFAULT:
             design_data.params = {"type": BodyType.STATIC_OBSTACLE,
                                   "reward": 0.0,
                                   "level": 0,
-                                  "lin_velocity": 0.0,
+                                  "lin_velocity": 10.0,
                                   "lin_velocity_angle": 0.0,
                                   "ang_velocity": 0.0,
                                   "density": 1.0,
@@ -272,12 +282,15 @@ class BoxUI():
                                   "friction": 0.0,
                                   "lin_damping": 0.0,
                                   "ang_damping": 0.0}
+            design_data.effect = {"type": EffectType.APPLY_FORCE,
+                                  "value": [10, 10]} # TODO: let value be choosen at runtime
         elif set_type == SetType.PREVIOUS:
             design_data.params = self.design_data.params.copy()
         elif set_type == SetType.RANDOM:
             types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE,
                      BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
             design_data.params = {"type": random.choice(types),
+            # design_data.params = {"type": BodyType(random.choice(types)),
                                   "reward": random.uniform(-1, 1),
                                   "level": 0,
                                   "lin_velocity": random.uniform(0, 10),
@@ -288,8 +301,10 @@ class BoxUI():
                                   "friction": random.uniform(0, 0.001),
                                   "lin_damping": random.uniform(0, 0.001),
                                   "ang_damping": random.uniform(0, 0.001)}
-
-        self.design_data = design_data
+            # TODO: random effects
+            design_data.effect = {"type": EffectType.APPLY_FORCE,
+                                  "value": [10, 10]}
+        return design_data
 
     def user_input(self):
         for event in pg.event.get():
@@ -343,7 +358,7 @@ class BoxUI():
                     self.design_bodies.pop()
                 except IndexError:
                     pass
-                self.set_design_data(set_type=self.set_type)
+                self.design_data = self.get_design_data(set_type=self.set_type)
 
             # elif event.type == pg.KEYDOWN and event.key == pg.K_c:
             #     if self.mode in (Mode.DESIGN, Mode.ROTATE):
@@ -467,12 +482,12 @@ class BoxUI():
                 self.design_data.points.append(mouse_pos)
             elif points_num == 2:
                 # reset design data
-                self.set_design_data(set_type=self.set_type)
+                self.design_data = self.get_design_data(set_type=self.set_type)
         else:
             self.design_bodies.pop()  # removing old body
             # adding new updated body
             self.design_bodies.append(self.design_data)
-            self.set_design_data(set_type=self.set_type)
+            self.design_data = self.get_design_data(set_type=self.set_type)
 
     def scale(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
@@ -594,7 +609,7 @@ class BoxUI():
                 # appending name of data field
                 dump_db[bix][dix].append(name)
                 # getting actual value of dataclass field
-                if isinstance(value, Enum):
+                if isinstance(value, IntEnum):
                     # appending value of data field
                     dump_db[bix][dix].append(str(value.name))
                 elif isinstance(value, list) and all(isinstance(i, b2Vec2) for i in value):
@@ -605,6 +620,8 @@ class BoxUI():
                         # appending every value in list
                         dump_db[bix][dix][1].append(
                             list(b2Vec2(value[vix].x, value[vix].y)))
+                elif isinstance(value, dict):
+                    dump_db[bix][dix].append(value.copy())
                 else:
                     # TODO: tuples (and other similar stuff inside DesignData) might be dangerous
                     dump_db[bix][dix].append(value)
@@ -823,7 +840,7 @@ class BoxUI():
 
         params = list()
         params.append("Type: {}".format(
-            self.design_data.params["type"].name))
+            BodyType(self.design_data.params["type"]).name))
         params.append("Reward: {}".format(
             round(self.design_data.params["reward"], 3)))
         params.append("Level: {}".format(

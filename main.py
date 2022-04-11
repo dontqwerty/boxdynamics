@@ -19,5 +19,6 @@ while True:
     if step_reward:
         # print("state: {}, step_reward: {}, done: {}, info: {}".format(state, step_reward, done, info))
         total_reward += step_reward
+        # print(total_reward)
     if done:
         break

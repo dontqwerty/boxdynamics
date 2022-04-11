@@ -1,8 +1,8 @@
 import math
 import random
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import List
+from enum import IntEnum
+from typing import Dict, List
 
 import gym
 import numpy as np
@@ -11,7 +11,7 @@ from Box2D import (b2Body, b2Contact, b2ContactListener, b2Fixture,
                    b2PolygonShape, b2RayCastCallback, b2Vec2, b2World)
 
 import boxcolors as color
-from boxdef import BodyShape, BodyType
+from boxdef import BodyShape, BodyType, EffectType
 from boxui import BoxUI, DesignData, Mode, ScreenLayout
 from boxutils import get_intersection, get_line_eq
 
@@ -35,12 +35,12 @@ MAX_ANGLE = math.pi * 3 / 4
 # MAX_ANGLE = 2*math.pi
 
 MIN_FORCE = 0  # newtons
-MAX_FORCE = 8
+MAX_FORCE = 0.001
 
 # observation space
 OBSERVATION_RANGE = math.pi - math.pi/8  # 2*math.pi
 OBSERVATION_MAX_DISTANCE = 1000  # how far can the agent see
-OBSERVATION_NUM = 50  # number of distance vectors
+OBSERVATION_NUM = 20  # number of distance vectors
 
 # agent frictions
 AGENT_ANGULAR_DAMPING = 2
@@ -56,15 +56,14 @@ MOVING_OBSTACLE_DENSITY = 1000000000  # kg/(m*m)
 
 @dataclass
 class BodyData:
-    type: Enum = BodyType.DEFAULT
+    type: IntEnum = BodyType.DEFAULT
     color: tuple = color.WHITE
-    shape: Enum = BodyShape.BOX
+    shape: IntEnum = BodyShape.BOX
     # list of bodies in contact with this body
-    contact_bodies: List[b2Body] = field(default_factory=list)
+    contacts: List[b2Body] = field(default_factory=list)
     reward: float = 0  # reward when agents hits the object
-    # level of deepness when drawing screen (0 is above everything else)
-    # if multiple object share same level, first created objects are below others
     level: int = 0
+    effect: Dict = field(default_factory=dict)
 
 
 @dataclass
@@ -75,41 +74,6 @@ class Observation:
     intersection: b2Vec2 = (np.inf, np.inf)
     distance: float = np.inf
     body: b2Body = None
-
-
-class ContactListener(b2ContactListener):
-    def __init__(self):
-        b2ContactListener.__init__(self)
-        self.contact_bodies: List[dict] = list()
-
-    def BeginContact(self, contact: b2Contact):
-        contact.fixtureA.body.userData.contact_bodies.append(
-            contact.fixtureB.body)
-        contact.fixtureB.body.userData.contact_bodies.append(
-            contact.fixtureA.body)
-        self.contact_bodies.append(
-            {"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
-
-        pass
-
-    def EndContact(self, contact):
-        for c in self.contact_bodies:
-            if c["bodyA"] == contact.fixtureA.body and c["bodyB"] == contact.fixtureB.body:
-                contact.fixtureA.body.userData.contact_bodies.remove(
-                    contact.fixtureB.body)
-                contact.fixtureB.body.userData.contact_bodies.remove(
-                    contact.fixtureA.body)
-                self.contact_bodies.remove(
-                    {"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
-                break
-
-        pass
-
-    def PreSolve(self, contact, oldMainfold):
-        pass
-
-    def PostSolve(self, contact, impulse):
-        pass
 
 
 class RayCastClosestCallback(b2RayCastCallback):
@@ -146,7 +110,7 @@ class BoxEnv(gym.Env):
 
         # world keeps track of objects and physics
         self.world = b2World(gravity=(0, 0), doSleep=True,
-                             contactListener=ContactListener())
+                             contactListener=ContactListener(self))
 
         # action space
         # relative agent_angle, force
@@ -154,6 +118,9 @@ class BoxEnv(gym.Env):
             np.array([MIN_ANGLE, MIN_FORCE]).astype(np.float32),
             np.array([MAX_ANGLE, MAX_FORCE]).astype(np.float32)
         )
+
+        # to signal that the training is done
+        self.done = False
 
         self.user_action = None
         self.manual_mode = False
@@ -179,17 +146,11 @@ class BoxEnv(gym.Env):
                                 self.screen_layout.simulation_pos.y) / PPM - b2Vec2(0, self.world_height)
 
         # it's like the observation space but with more informations
-        self.data: List[Observation] = list()  # list of Observation dataclasses
+        # list of Observation dataclasses
+        self.data: List[Observation] = list()
 
-        # adding world borders
-        self.__create_borders()
-
-        # adding dynamic body for RL agent
-        # TODO: support agent parameters from ouside class
-        self.__create_agent()
-
-        # defining own polygon draw function
-        # b2PolygonShape.draw = self.__draw_polygon
+        # creates world borders and agent
+        self.create_world()
 
         self.prev_state = None
 
@@ -209,22 +170,8 @@ class BoxEnv(gym.Env):
         # TODO: support circles
         # TODO: support agent_head definition from outside class
         self.__update_agent_head()
-        self.action = b2Vec2(0, 0)
 
-        if self.manual_mode:
-            mouse_pos = b2Vec2(pg.mouse.get_pos())
-            self.action = self.__world_coord(
-                mouse_pos) - self.agent_body.position
-        elif action is not None:
-            # calculating where to apply force
-            # target -> "head" of agent
-            self.action = b2Vec2(action[1] *
-                                 math.cos(action[0] + self.agent_body.angle),
-                                 action[1] *
-                                 math.sin(action[0] + self.agent_body.angle))
-
-        self.agent_body.ApplyForce(
-            force=self.action, point=self.agent_head, wake=True)
+        self.perform_action(action)
 
         # Make Box2D simulate the physics of our world for one step.
         self.world.Step(TIME_STEP, VEL_ITER, POS_ITER)
@@ -232,22 +179,19 @@ class BoxEnv(gym.Env):
         # clear forces or they will stay permanently
         self.world.ClearForces()
 
+        # current and previous state
         self.state = self.__get_observations()
-
         assert self.state in self.observation_space
-
-        # TODO: rewards and effects
-
         self.prev_state = self.state
 
-        step_reward = 0
-
-        self.render()
+        # agent rewards
+        step_reward = self.set_reward()
 
         info = {}
 
-        done = False
+        done = self.done
 
+        self.render()
         self.ui.user_input()
 
         return self.state, step_reward, done, info
@@ -259,6 +203,29 @@ class BoxEnv(gym.Env):
         for body in self.world.bodies:
             self.world.DestroyBody(body)
         self.ui.quit()
+
+    def set_reward(self):
+        step_reward = 0
+        for agent_contacts in self.agent_body.userData.contacts:
+            step_reward += agent_contacts.userData.reward
+        return step_reward
+
+    def perform_action(self, action):
+        self.action = b2Vec2(0, 0)
+        if self.manual_mode:
+            mouse_pos = b2Vec2(pg.mouse.get_pos())
+            self.action = self.__world_coord(
+                mouse_pos) - self.agent_body.position
+        elif action is not None:
+            # calculating where to apply force
+            # target is "head" of agent
+            self.action = b2Vec2(action[1] *
+                                 math.cos(action[0] + self.agent_body.angle),
+                                 action[1] *
+                                 math.sin(action[0] + self.agent_body.angle))
+
+        self.agent_body.ApplyForce(
+            force=self.action, point=self.agent_head, wake=True)
 
     def world_design(self):
         self.ui.set_mode(Mode.DESIGN)
@@ -287,38 +254,35 @@ class BoxEnv(gym.Env):
 
         self.ui.design_bodies.clear()
 
+    def set_body_params(self, body: b2Body, design_data: DesignData):
+        body.angularDamping = design_data.params["ang_damping"]
+        body.angularVelocity = design_data.params["ang_velocity"]
+        body.linearDamping = design_data.params["lin_damping"]
+        design_data.params["lin_velocity_angle"] = design_data.params["lin_velocity_angle"] * (
+            2 * math.pi / 360)
+        body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(
+            design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
+        body.inertia = design_data.params["inertia"]
+        body.fixtures[0].density = design_data.params["density"]
+        body.fixtures[0].friction = design_data.params["friction"]
+
     def __create_body(self, pos, size, angle, design_data: DesignData):
         type = design_data.params["type"]
         if type == BodyType.STATIC_OBSTACLE:
             body = self.create_static_obstacle(pos, size, angle=angle)
         elif type == BodyType.MOVING_OBSTACLE:
             body = self.create_moving_obstacle(pos, size, angle=angle)
-            # TODO: function instead
-            body.angularDamping = design_data.params["ang_damping"]
-            body.angularVelocity = design_data.params["ang_velocity"]
-            body.linearDamping = design_data.params["lin_damping"]
-            body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
-            body.inertia = design_data.params["inertia"]
-            body.fixtures[0].density = design_data.params["density"]
-            body.fixtures[0].friction = design_data.params["friction"]
+            self.set_body_params(body, design_data)
         elif type == BodyType.STATIC_ZONE:
             body = self.create_static_zone(pos, size, angle=angle)
         elif type == BodyType.MOVING_ZONE:
             body = self.create_moving_zone(pos, size, angle=angle)
-            # TODO: function instead
-            body.angularDamping = design_data.params["ang_damping"]
-            body.angularVelocity = design_data.params["ang_velocity"]
-            body.linearDamping = design_data.params["lin_damping"]
-            body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
-            body.inertia = design_data.params["inertia"]
-            body.fixtures[0].density = design_data.params["density"]
-            body.fixtures[0].friction = design_data.params["friction"]
+            self.set_body_params(body, design_data)
 
-        # body.userData.reward = design_data.reward
-        # body.userData.level = design_data.level
-        
         body.userData.reward = design_data.params["reward"]
         body.userData.level = design_data.params["level"]
+
+        body.userData.effect = design_data.effect.copy()
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key
@@ -452,6 +416,14 @@ class BoxEnv(gym.Env):
         except ZeroDivisionError:
             return self.agent_body.angle
 
+    def create_world(self):
+        # adding world borders
+        self.__create_borders()
+
+        # adding dynamic body for RL agent
+        # TODO: support agent parameters from ouside class
+        self.__create_agent()
+
     def __create_borders(self):
         inside = 0.0  # defines how much of the borders are visible
 
@@ -506,11 +478,12 @@ class BoxEnv(gym.Env):
             return self.get_moving_zone_data()
         else:
             # TODO: explain
-            print(type)
             assert False
 
     def get_border_data(self) -> BodyData:
-        return BodyData(type=BodyType.BORDER, color=color.BORDER)
+        # todo border effect
+        effect = {"type": EffectType.APPLY_FORCE, "value": [100, 100]}
+        return BodyData(type=BodyType.BORDER, color=color.BORDER, effect=effect)
 
     def get_agent_data(self) -> BodyData:
         return BodyData(type=BodyType.AGENT, color=color.AGENT, level=np.inf)
@@ -610,3 +583,136 @@ class BoxEnv(gym.Env):
 
     def __world_coord(self, point: b2Vec2) -> b2Vec2:
         return b2Vec2(point.x / PPM, (self.screen_height - point.y) / PPM) - self.world_pos
+
+
+class ContactListener(b2ContactListener):
+    def __init__(self, env: BoxEnv):
+        b2ContactListener.__init__(self)
+        self.env = env
+
+        self.contacts: List[dict] = list()
+
+        # list with contact number in case of an agent contact
+        self.agent_contacts_num = list()
+        # list with contact number in case of a border contact
+        # agent contacts are not copied here
+        self.border_contacts_num = list()
+
+        # creating list with all possible contact types
+        self.contact_types = list()  # list of lists [BodyType, BodyType]
+        contact_number = 0
+        type_list = list(BodyType)
+        for type_a in list(BodyType):
+            for type_b in type_list:
+                contact_type = [type_a, type_b]
+                self.contact_types.append(contact_type)
+                if BodyType.AGENT in contact_type:
+                    self.agent_contacts_num.append(contact_number)
+                elif BodyType.BORDER in contact_type:
+                    self.border_contacts_num.append(contact_number)
+                contact_number += 1
+            # since [type_0, type_1] is equal to [type_1, type_0]
+            type_list.remove(type_a)
+
+    def BeginContact(self, contact: b2Contact):
+        # keeping track of which body is in touch with others
+        self.add_contact(contact)
+        self.handle_contact_begin(contact)
+        pass
+
+    def EndContact(self, contact):
+        # updating which body is in touch with others
+        self.remove_contact(contact)
+        pass
+
+    def PreSolve(self, contact, oldMainfold):
+        pass
+
+    def PostSolve(self, contact, impulse):
+        pass
+
+    def add_contact(self, contact: b2Contact):
+        contact.fixtureA.body.userData.contacts.append(
+            contact.fixtureB.body)
+        contact.fixtureB.body.userData.contacts.append(
+            contact.fixtureA.body)
+        self.contacts.append(
+            {"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
+
+    def remove_contact(self, contact: b2Contact):
+        for c in self.contacts:
+            if c["bodyA"] == contact.fixtureA.body and c["bodyB"] == contact.fixtureB.body:
+                contact.fixtureA.body.userData.contacts.remove(
+                    contact.fixtureB.body)
+                contact.fixtureB.body.userData.contacts.remove(
+                    contact.fixtureA.body)
+                self.contacts.remove(
+                    {"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
+                break
+
+    def get_contact_number(self, contact):
+        type_a = contact.fixtureA.body.userData.type
+        type_b = contact.fixtureB.body.userData.type
+        types = [type_a, type_b]
+
+        for tix, contact_type in enumerate(self.contact_types):
+            if set(contact_type) == set(types):
+                return tix
+
+    def effect(self, body: b2Body, effect_type: EffectType, new_value=None):
+        # TODO: new value check
+        if effect_type == EffectType.SET_VELOCITY:
+            # new_value: b2Vec2
+            body.linearVelocity = new_value
+        if effect_type == EffectType.APPLY_FORCE:
+            # new_value: [float, float]
+            body.ApplyForce(
+                force=b2Vec2(new_value), point=body.position, wake=True)
+            print("Force applied: {}".format(new_value))
+        elif effect_type == EffectType.DONE:
+            self.env.done = True
+        elif effect_type == EffectType.RESET:
+            self.env.reset()
+        pass
+
+    def handle_contact_begin(self, contact: b2Contact):
+        contact_num = self.get_contact_number(contact)
+
+        if contact_num in self.agent_contacts_num:
+            self.handle_agent_contact(contact)
+        elif contact_num in self.border_contacts_num:
+            self.handle_border_contact(contact)
+        pass
+
+    def handle_agent_contact(self, contact: b2Contact):
+
+        if contact.fixtureA.body.userData.type == BodyType.AGENT:
+            agent = contact.fixtureA.body
+            body = contact.fixtureB.body
+        else:
+            body = contact.fixtureA.body
+            agent = contact.fixtureB.body
+
+        # print("effect: " + str(body.userData.effect) + str(agent.userData.effect))
+        # get effect type
+        effect_type = body.userData.effect["type"]
+
+        # get value if needed
+        value = body.userData.effect["value"]
+        print("effect: " + str(EffectType(effect_type).name) + str(value))
+
+        # perform effect
+        self.effect(agent, effect_type, value)
+        pass
+
+    def handle_border_contact(self, contact):
+        if contact.fixtureA.body.userData.type == BodyType.BORDER:
+            # body B is the moving one
+            body = contact.fixtureB.body
+        else:
+            # body A is the moving one
+            body = contact.fixtureA.body
+
+        value = contact.fixtureA.body.linearVelocity * -1
+        self.effect(body, EffectType.SET_VELOCITY, value)
+        pass
