@@ -1,10 +1,10 @@
-from dbm import dumb
+from dataclasses import is_dataclass
 import json
 import logging
 import math
 import random
 from enum import IntEnum
-from logging import info
+from logging import info, debug
 from time import sleep
 from typing import Dict, List
 
@@ -27,7 +27,7 @@ class SetType(IntEnum):
 
 
 class BoxUI():
-    def __init__(self, env, screen_layout: ScreenLayout, ppm, target_fps: float) -> None:
+    def __init__(self, env, screen_layout: ScreenLayout, ppm, target_fps: float, mode: UIMode = UIMode.SIMULATION) -> None:
         self.env = env
         self.layout = screen_layout
         self.ppm = ppm
@@ -35,7 +35,7 @@ class BoxUI():
 
         # only setting mode this way here
         # use set_mode everywhere else
-        self.mode = UIMode.NONE
+        self.mode = mode
         self.prev_mode = UIMode.NONE
 
         self.design_bodies: List[DesignData] = list()
@@ -81,7 +81,7 @@ class BoxUI():
         # can save and use using keys from 0 to 9
         self.saved_designs: List[DesignData] = [None]*10
 
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.DEBUG)
         info("BoxUI created")
 
         pass
@@ -190,8 +190,9 @@ class BoxUI():
         self.screen.blit(text_surface, pos)
 
     def copy_design_bodies(self):
-        design = list()
+        design_copy = list()
 
+        count = 0
         for body in self.design_bodies:
             design_dict: Dict[str,
                             DesignData] = body.__dict__  # pointer
@@ -213,10 +214,18 @@ class BoxUI():
                 else:
                     design_data[key] = design_dict[key]
 
-            design_data = DesignData(**design_data)
-            design.append(design_data)
 
-        return design
+            design_data = DesignData(**design_data)
+            design_copy.append(design_data)
+
+            # TODO: remove or make proper function
+            assert design_copy[-1] == body and "Must equal"
+            design_copy[-1].points[0].x += 1
+            assert design_copy != body and "Must differ"
+            design_copy[-1].points[0].x -= 1
+            assert design_copy[-1] == body and "Must equal 2"
+
+        return design_copy
 
     def get_design_data(self, set_type=SetType.DEFAULT):
         design_data = DesignData()
@@ -234,7 +243,7 @@ class BoxUI():
                                   "lin_damping": 0.0,
                                   "ang_damping": 0.0}
             design_data.effect = {"type": EffectType.APPLY_FORCE,
-                                  "value": [10, 10]}  # TODO: let value be choosen at runtime
+                                  "value": [0, 0]}  # TODO: let value be choosen at runtime
         elif set_type == SetType.PREVIOUS:
             design_data.params = self.design_data.params.copy()
         elif set_type == SetType.RANDOM:
@@ -254,7 +263,7 @@ class BoxUI():
                                   "ang_damping": random.uniform(0, 0.001)}
             # TODO: random effects
             design_data.effect = {"type": EffectType.APPLY_FORCE,
-                                  "value": [10, 10]}
+                                  "value": [0, 0]}
         return design_data
 
     def user_input(self):
@@ -568,43 +577,50 @@ class BoxUI():
         self.design_data.color = self.env.get_data(
             self.design_data.params["type"]).color
 
-    def designs_to_dicts(self, designs):
-        # db as design bodies since it's just a different
-        # format for the same thing
-        db = [list(body.__dict__.items()) for body in (designs)]
-        # design bodies to be dumpes as json
+    def dataclass_to_dict(self, data):
         dump_db = list()
-        for bix, body in enumerate(db):
+        for name, value in list(data.__dict__.items()):
             dump_db.append(list())
-            for dix, _ in enumerate(body):
-                dump_db[bix].append(list())
-                name = db[bix][dix][0]  # name of dataclass field
-                value = db[bix][dix][1]  # value of dataclass field
-                # appending name of data field
-                dump_db[bix][dix].append(name)
-                # getting actual value of dataclass field
-                if isinstance(value, IntEnum):
-                    # appending value of data field
-                    dump_db[bix][dix].append(str(value.name))
-                elif isinstance(value, list) and all(isinstance(i, b2Vec2) for i in value):
-                    # TODO: check if actually all lists contain only b2Vec2 (yes for now)
-                    # appending list for values
-                    dump_db[bix][dix].append(list())
-                    for vix, v in enumerate(value):
-                        # appending every value in list
-                        dump_db[bix][dix][1].append(
-                            list(b2Vec2(value[vix].x, value[vix].y)))
-                elif isinstance(value, dict):
-                    dump_db[bix][dix].append(value.copy())
-                else:
-                    # TODO: tuples (and other similar stuff inside DesignData) might be dangerous
-                    dump_db[bix][dix].append(value)
+            dump_db[-1].append(name)
+            # getting actual value of dataclass field
+            if is_dataclass(value):
+                # recursive for nested dataclasses
+                debug("dataclass {} : {}".format(name, value))
+                dump_db[-1].append(self.dataclass_to_dict(value))
+            elif isinstance(value, dict):
+                # using copy() dict method
+                dump_db[-1].append(value.copy())
+                debug("dict {} : {}".format(name, value))
+            elif isinstance(value, IntEnum):
+                # copying enum
+                debug("IntEnum {} : {}".format(name, value.name))
+                dump_db[-1].append(type(value)(value))
+            # TODO: support other types of lists
+            elif isinstance(value, list):
+                # appending list for values
+                debug("list {}".format(name))
+                dump_db[-1].append(list())
+                for sub_value in value:
+                    # appending every value in list
+                    if is_dataclass(sub_value):
+                        # list of dataclasses
+                        dump_db[-1][1].append(self.dataclass_to_dict(sub_value))
+                    elif isinstance(sub_value, b2Vec2):
+                        # list of b2Vec2
+                        dump_db[-1][1].append(list(sub_value))
+            elif isinstance(value, b2Vec2):
+                debug("b2Vec2 {} : {}".format(name, value))
+                dump_db[-1].append(list(value))
+            else:
+                # TODO: tuples (and other similar stuff inside data) might be dangerous
+                debug("normal {} : {}".format(name, value))
+                dump_db[-1].append(value)
 
-        dump_db = [dict(body) for body in dump_db]
+        dump_db = dict(dump_db)
         return dump_db
 
     def save_design(self, filename):
-        dump_db = self.designs_to_dicts(self.design_bodies)
+        dump_db = [self.dataclass_to_dict(body) for body in self.design_bodies]
         try:
             with open(filename, "w") as f:
                 json.dump(dump_db, f)
@@ -617,21 +633,18 @@ class BoxUI():
     def load_design(self, filename):
         try:
             with open(filename, "r") as f:
-                j = json.load(f)
+                loaded_db = json.load(f)
         except FileNotFoundError:
             info("File not found: {}".format(filename))
             return
 
         # TODO: append to existing design or overwrite?
-        # design_bodies = list()
-        for body in j:
+        # currently appending
+        for body in loaded_db:
             design = DesignData(**body)
-            design.shape = BodyShape[design.shape]
             design.points = [b2Vec2(p) for p in design.points]
             design.vertices = [b2Vec2(p) for p in design.vertices]
-            # design.type = BodyType[design.type]
             design.init_vertices = [b2Vec2(p) for p in design.init_vertices]
-            # design_bodies.append(design)
             self.design_bodies.append(design)
 
         info("Loaded design {}".format(filename))
@@ -982,6 +995,6 @@ class BoxUI():
 
     # transform point in world coordinates to point in pg coordinates
     def __pg_coord(self, point):
-        point = b2Vec2(point.x * self.ppm, (self.env.world_height -
+        point = b2Vec2(point.x * self.ppm, (self.env.cfg.world_height -
                        point.y) * self.ppm) + self.layout.simulation_pos
         return point
