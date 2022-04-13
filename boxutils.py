@@ -1,6 +1,58 @@
 import math
-import logging
+from dataclasses import is_dataclass
+from enum import IntEnum
+from logging import debug
+
 from Box2D import b2Vec2
+
+
+def dataclass_to_dict(self, data):
+        dump_db = list()
+        for name, value in list(data.__dict__.items()):
+            dump_db.append(list())
+            dump_db[-1].append(name)
+            # getting actual value of dataclass field
+            if is_dataclass(value):
+                # recursive for nested dataclasses
+                debug("dataclass {} : {}".format(name, value))
+                dump_db[-1].append(self.dataclass_to_dict(value))
+            elif isinstance(value, dict):
+                # using copy() dict method
+                dump_db[-1].append(value.copy())
+                debug("dict {} : {}".format(name, value))
+            elif isinstance(value, IntEnum):
+                # copying enum
+                debug("IntEnum {} : {}".format(name, value.name))
+                dump_db[-1].append(type(value)(value))
+            # TODO: support other types of lists
+            elif isinstance(value, list):
+                # appending list for values
+                debug("list {}".format(name))
+                dump_db[-1].append(list())
+                for sub_value in value:
+                    # appending every value in list
+                    if is_dataclass(sub_value):
+                        # list of dataclasses
+                        dump_db[-1][1].append(self.dataclass_to_dict(sub_value))
+                    elif isinstance(sub_value, b2Vec2):
+                        # list of b2Vec2
+                        dump_db[-1][1].append(list(sub_value))
+                    elif isinstance(sub_value, (int, float, str)):
+                        # list of strings
+                        dump_db[-1][1].append(sub_value)
+                    else:
+                        print()
+                        assert False and "Unexpected type in dataclass {} {}".format(name, type(sub_value))
+            elif isinstance(value, b2Vec2):
+                debug("b2Vec2 {} : {}".format(name, value))
+                dump_db[-1].append(list(value))
+            else:
+                # TODO: tuples (and other similar stuff inside data) might be dangerous
+                debug("normal {} : {}".format(name, value))
+                dump_db[-1].append(value)
+
+        dump_db = dict(dump_db)
+        return dump_db
 
 def get_line_eq(point1: b2Vec2, point2: b2Vec2):
     try:
@@ -37,7 +89,7 @@ def get_intersection(line1, line2):
         intersection[1] = (c1*a2 - c2*a1) / (a1*b2 - a2*b1)
     except ZeroDivisionError:
         # TODO: handle this
-        logging.debug("Intersection calculation failed")
+        debug("Intersection calculation failed")
         pass
 
     return b2Vec2(intersection)

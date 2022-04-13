@@ -17,7 +17,7 @@ from boxdef import (BodyShape, BodyType, DesignData, EffectType, ScreenLayout,
                     UIMode)
 from boxraycast import RayCastClosestCallback
 from boxui import BoxUI
-from boxutils import get_intersection, get_line_eq
+from boxutils import dataclass_to_dict, get_intersection, get_line_eq
 
 
 class AgentHeadType(IntEnum):
@@ -205,9 +205,8 @@ class BoxEnv(gym.Env):
         self.ui.quit()
 
     def save_conf(self, filename="config.json"):
-        print(self.ui.dataclass_to_dict(self.cfg))
         with open(filename, "w") as f:
-            json.dump(self.ui.dataclass_to_dict(self.cfg), f)
+            json.dump(dataclass_to_dict(self.cfg), f)
         pass
 
     def load_conf(self, filename="config.json"):

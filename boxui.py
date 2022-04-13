@@ -1,10 +1,10 @@
-from dataclasses import is_dataclass
 import json
 import logging
 import math
 import random
+from dataclasses import is_dataclass
 from enum import IntEnum
-from logging import info, debug
+from logging import debug, info
 from time import sleep
 from typing import Dict, List
 
@@ -15,7 +15,7 @@ from Box2D import b2Body, b2Vec2
 import boxcolors
 from boxdef import (BodyShape, BodyType, DesignData, EffectType, ScreenLayout,
                     UIMode)
-from boxutils import get_intersection, get_line_eq_angle
+from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle
 
 DESIGN_SLEEP = 0.01  # delay in seconds while designing world
 
@@ -575,56 +575,8 @@ class BoxUI():
         self.design_data.color = self.env.get_data(
             self.design_data.params["type"]).color
 
-    def dataclass_to_dict(self, data):
-        dump_db = list()
-        for name, value in list(data.__dict__.items()):
-            dump_db.append(list())
-            dump_db[-1].append(name)
-            # getting actual value of dataclass field
-            if is_dataclass(value):
-                # recursive for nested dataclasses
-                debug("dataclass {} : {}".format(name, value))
-                dump_db[-1].append(self.dataclass_to_dict(value))
-            elif isinstance(value, dict):
-                # using copy() dict method
-                dump_db[-1].append(value.copy())
-                debug("dict {} : {}".format(name, value))
-            elif isinstance(value, IntEnum):
-                # copying enum
-                debug("IntEnum {} : {}".format(name, value.name))
-                dump_db[-1].append(type(value)(value))
-            # TODO: support other types of lists
-            elif isinstance(value, list):
-                # appending list for values
-                debug("list {}".format(name))
-                dump_db[-1].append(list())
-                for sub_value in value:
-                    # appending every value in list
-                    if is_dataclass(sub_value):
-                        # list of dataclasses
-                        dump_db[-1][1].append(self.dataclass_to_dict(sub_value))
-                    elif isinstance(sub_value, b2Vec2):
-                        # list of b2Vec2
-                        dump_db[-1][1].append(list(sub_value))
-                    elif isinstance(sub_value, (int, float, str)):
-                        # list of strings
-                        dump_db[-1][1].append(sub_value)
-                    else:
-                        print()
-                        assert False and "Unexpected type in dataclass {} {}".format(name, type(sub_value))
-            elif isinstance(value, b2Vec2):
-                debug("b2Vec2 {} : {}".format(name, value))
-                dump_db[-1].append(list(value))
-            else:
-                # TODO: tuples (and other similar stuff inside data) might be dangerous
-                debug("normal {} : {}".format(name, value))
-                dump_db[-1].append(value)
-
-        dump_db = dict(dump_db)
-        return dump_db
-
     def save_design(self, filename):
-        dump_db = [self.dataclass_to_dict(body) for body in self.design_bodies]
+        dump_db = [dataclass_to_dict(body) for body in self.design_bodies]
         try:
             with open(filename, "w") as f:
                 json.dump(dump_db, f)
