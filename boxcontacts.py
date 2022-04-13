@@ -1,3 +1,4 @@
+import logging
 from typing import List
 from logging import debug
 
@@ -113,14 +114,20 @@ class ContactListener(b2ContactListener):
             body = contact.fixtureA.body
             agent = contact.fixtureB.body
 
-        # get effect type
-        effect_type = body.userData.effect["type"]
+        try:
+            # get effect type
+            effect_type = body.userData.effect["type"]
 
-        # get value if needed
-        value = body.userData.effect["value"]
+            # get value if needed
+            value = body.userData.effect["value"]
 
-        # perform effect
-        self.effect(agent, effect_type, value)
+            # perform effect
+            self.effect(agent, effect_type, value)
+        except KeyError:
+            # TODO: better
+            logging.warn("Unable to perform effect")
+            logging.warn(body.userData.effect)
+            pass
         pass
 
     def handle_border_contact(self, contact):

@@ -78,9 +78,15 @@ class DesignData:
     # TODO: toggle color
     color: tuple = field(default=boxcolors.STATIC_OBSTACLE)
 
+    dict_ix: int = 0
+
     params: Dict = field(default_factory=dict)
     # indicates which param to currently change
     params_ix: int = 0
-    float_inc: float = 0.1
 
     effect: Dict = field(default_factory=dict)
+    effect_ix: int = 0
+
+    dicts: List = field(default_factory=list)
+
+    float_inc: float = 0.1

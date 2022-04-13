@@ -6,7 +6,7 @@ from logging import debug
 from Box2D import b2Vec2
 
 
-def dataclass_to_dict(self, data):
+def dataclass_to_dict(data):
         dump_db = list()
         for name, value in list(data.__dict__.items()):
             dump_db.append(list())
@@ -15,7 +15,7 @@ def dataclass_to_dict(self, data):
             if is_dataclass(value):
                 # recursive for nested dataclasses
                 debug("dataclass {} : {}".format(name, value))
-                dump_db[-1].append(self.dataclass_to_dict(value))
+                dump_db[-1].append(dataclass_to_dict(value))
             elif isinstance(value, dict):
                 # using copy() dict method
                 dump_db[-1].append(value.copy())
@@ -33,7 +33,7 @@ def dataclass_to_dict(self, data):
                     # appending every value in list
                     if is_dataclass(sub_value):
                         # list of dataclasses
-                        dump_db[-1][1].append(self.dataclass_to_dict(sub_value))
+                        dump_db[-1][1].append(dataclass_to_dict(sub_value))
                     elif isinstance(sub_value, b2Vec2):
                         # list of b2Vec2
                         dump_db[-1][1].append(list(sub_value))

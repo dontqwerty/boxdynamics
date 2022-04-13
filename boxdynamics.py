@@ -3,7 +3,7 @@ import math
 import random
 from dataclasses import dataclass, field
 from enum import IntEnum
-from logging import debug, info, warn
+import logging
 from typing import Dict, List
 
 import gym
@@ -65,12 +65,12 @@ class EnvCfg:
     time_step: float = 1.0 / target_fps
     ppm: float = 10  # pixel per meter
 
-    screen_layout: ScreenLayout = ScreenLayout()
+    screen: ScreenLayout = ScreenLayout()
 
-    world_width: float = screen_layout.simulation_size.x / ppm
-    world_height: float = screen_layout.simulation_size.y / ppm
-    world_pos: b2Vec2 = b2Vec2(screen_layout.simulation_pos.x, screen_layout.height -
-                               screen_layout.simulation_pos.y) / ppm - b2Vec2(0, world_height)
+    world_width: float = screen.simulation_size.x / ppm
+    world_height: float = screen.simulation_size.y / ppm
+    world_pos: b2Vec2 = b2Vec2(screen.simulation_pos.x, screen.height -
+                               screen.simulation_pos.y) / ppm - b2Vec2(0, world_height)
 
     # world
     create_borders: bool = True
@@ -83,7 +83,7 @@ class EnvCfg:
     vel_iter: int = 6
     pos_iter: int = 2
 
-    agent_cfg: AgentCfg = AgentCfg()
+    agent: AgentCfg = AgentCfg()
     design_bodies: List = field(default_factory=list)
 
 
@@ -112,6 +112,9 @@ class Observation:
 
 class BoxEnv(gym.Env):
     def __init__(self) -> None:
+        logging.basicConfig(
+            format='%(levelname)s: %(asctime)s: %(message)s', level=logging.INFO)
+
         # initializing base class
         super(BoxEnv, self).__init__()
 
@@ -124,15 +127,15 @@ class BoxEnv(gym.Env):
         self.load_conf("config.json")
 
         # initializing UI
-        self.ui = BoxUI(self, self.cfg.screen_layout,
+        self.ui = BoxUI(self, self.cfg.screen,
                         self.cfg.ppm, self.cfg.target_fps)
 
         # action space
         # relative agent_angle, force
         self.action_space = gym.spaces.Box(
-            np.array([self.cfg.agent_cfg.min_angle, self.cfg.agent_cfg.min_force]
+            np.array([self.cfg.agent.min_angle, self.cfg.agent.min_force]
                      ).astype(np.float32),
-            np.array([self.cfg.agent_cfg.max_angle, self.cfg.agent_cfg.max_force]
+            np.array([self.cfg.agent.max_angle, self.cfg.agent.max_force]
                      ).astype(np.float32)
         )
 
@@ -143,7 +146,7 @@ class BoxEnv(gym.Env):
         self.agent_head = b2Vec2(0, 0)
         self.action = b2Vec2(0, 0)
 
-        # defining observation spaces based on cfg.agent_cfg.obs_keys
+        # defining observation spaces based on cfg.agent.obs_keys
         self.observation_space = gym.spaces.Dict(self.get_observation_dict())
 
         # list of Observation dataclasses used to set some
@@ -210,8 +213,15 @@ class BoxEnv(gym.Env):
         pass
 
     def load_conf(self, filename="config.json"):
-        with open(filename, "r") as f:
-            self.cfg = EnvCfg(**json.load(f))
+        try:
+            with open(filename, "r") as f:
+                self.cfg = EnvCfg(**json.load(f))
+        except Exception as e:
+            logging.warn(
+                "Unable to read config file: {} with exception: {}".format(filename, e))
+            logging.info("Using default config")
+            self.cfg = EnvCfg()
+            return
 
         # design bodies
         for bix, body in enumerate(self.cfg.design_bodies):
@@ -223,17 +233,18 @@ class BoxEnv(gym.Env):
             self.cfg.design_bodies[bix] = DesignData(**body)
 
         # screen layout
-        self.cfg.screen_layout = ScreenLayout(**self.cfg.screen_layout)
-        self.cfg.screen_layout.size = b2Vec2(self.cfg.screen_layout.size)
-        self.cfg.screen_layout.simulation_pos = b2Vec2(self.cfg.screen_layout.simulation_pos)
-        self.cfg.screen_layout.simulation_size = b2Vec2(self.cfg.screen_layout.simulation_size)
-        self.cfg.screen_layout.board_pos = b2Vec2(self.cfg.screen_layout.board_pos)
-        self.cfg.screen_layout.board_size = b2Vec2(self.cfg.screen_layout.board_size)
-        self.cfg.screen_layout.popup_size = b2Vec2(self.cfg.screen_layout.popup_size)
-        self.cfg.screen_layout.popup_pos = b2Vec2(self.cfg.screen_layout.popup_pos)
+        self.cfg.screen = ScreenLayout(**self.cfg.screen)
+        self.cfg.screen.size = b2Vec2(self.cfg.screen.size)
+        self.cfg.screen.simulation_pos = b2Vec2(self.cfg.screen.simulation_pos)
+        self.cfg.screen.simulation_size = b2Vec2(
+            self.cfg.screen.simulation_size)
+        self.cfg.screen.board_pos = b2Vec2(self.cfg.screen.board_pos)
+        self.cfg.screen.board_size = b2Vec2(self.cfg.screen.board_size)
+        self.cfg.screen.popup_size = b2Vec2(self.cfg.screen.popup_size)
+        self.cfg.screen.popup_pos = b2Vec2(self.cfg.screen.popup_pos)
 
         # agent
-        self.cfg.agent_cfg = AgentCfg(**self.cfg.agent_cfg)
+        self.cfg.agent = AgentCfg(**self.cfg.agent)
 
         self.create_bodies()
         pass
@@ -286,6 +297,7 @@ class BoxEnv(gym.Env):
         # creates all the bodies in the enviroment configuration
         if isinstance(self.cfg.design_bodies, list):
             for design in self.cfg.design_bodies:
+                print(design.effect)
                 self.create_body(design)
 
     def create_body(self, design_data: DesignData):
@@ -296,7 +308,8 @@ class BoxEnv(gym.Env):
             line2 = get_line_eq(points[1], points[3])
         except IndexError:
             # the body is a single point (?)
-            warn("Can not create body from design {}".format(design_data))
+            logging.warning(
+                "Can not create body from design {}".format(design_data))
             return
         pos = get_intersection(line1, line2)
         width = (points[0] - points[1]).length / 2
@@ -367,12 +380,12 @@ class BoxEnv(gym.Env):
         )
 
     def create_agent(self):
-        agent_width, agent_height = self.cfg.agent_cfg.size
+        agent_width, agent_height = self.cfg.agent.size
         self.agent_size = b2Vec2(agent_width, agent_height)
-        agent_angle = self.cfg.agent_cfg.angle
+        agent_angle = self.cfg.agent.angle
 
         # setting random initial position
-        if self.cfg.agent_cfg.pos is None:
+        if self.cfg.agent.pos is None:
             r = self.agent_size.length
             try:
                 x = random.randint(int(r), int(
@@ -383,23 +396,23 @@ class BoxEnv(gym.Env):
                 assert False and "There is no space to spawn the agent, modify world sizes"
             agent_pos = b2Vec2(x, y)
         else:
-            agent_pos = b2Vec2(self.cfg.agent_cfg.pos)
+            agent_pos = b2Vec2(self.cfg.agent.pos)
 
         # setting random initial angle
-        if self.cfg.agent_cfg.angle is None:
+        if self.cfg.agent.angle is None:
             agent_angle = random.random() * (2*math.pi)
 
         self.agent_body: b2Body = self.world.CreateDynamicBody(
             position=agent_pos, angle=agent_angle)
         self.agent_fix: b2Fixture = self.agent_body.CreatePolygonFixture(
-            box=(agent_width, agent_height), density=self.cfg.agent_cfg.density, friction=self.cfg.agent_cfg.friction)
+            box=(agent_width, agent_height), density=self.cfg.agent.density, friction=self.cfg.agent.friction)
 
         self.agent_body.userData = self.get_agent_data()
 
-        self.agent_fix.body.angularDamping = self.cfg.agent_cfg.ang_damp
-        self.agent_fix.body.linearDamping = self.cfg.agent_cfg.lin_damp
+        self.agent_fix.body.angularDamping = self.cfg.agent.ang_damp
+        self.agent_fix.body.linearDamping = self.cfg.agent.lin_damp
 
-        info("Created agent")
+        logging.info("Created agent")
 
     # TODO: support colors, circles
     def create_static_obstacle(self, pos, size, angle=0):
@@ -461,17 +474,17 @@ class BoxEnv(gym.Env):
     def get_observation_dict(self):
         observation_dict = dict()
 
-        for key in self.cfg.agent_cfg.obs_keys:
+        for key in self.cfg.agent.obs_keys:
             partial_dict = dict()
             if key == "distances":
                 partial_dict = ({"distances": gym.spaces.Box(
-                    low=0, high=np.inf, shape=(self.cfg.agent_cfg.obs_num,))})
+                    low=0, high=np.inf, shape=(self.cfg.agent.obs_num,))})
             elif key == "body_types":
                 partial_dict = ({"body_types": gym.spaces.Tuple(
-                    ([gym.spaces.Discrete(len(BodyType))]*self.cfg.agent_cfg.obs_num))})
+                    ([gym.spaces.Discrete(len(BodyType))]*self.cfg.agent.obs_num))})
             elif key == "body_velocities":
                 partial_dict = ({"body_velocities": gym.spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(self.cfg.agent_cfg.obs_num, 2, ))})
+                    low=-np.inf, high=np.inf, shape=(self.cfg.agent.obs_num, 2, ))})
             elif key == "position":
                 partial_dict = ({"position": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(2,))})
@@ -495,7 +508,7 @@ class BoxEnv(gym.Env):
     # dict should be set
     def set_observation_dict(self):
         state = dict()
-        for key in self.cfg.agent_cfg.obs_keys:
+        for key in self.cfg.agent.obs_keys:
             if key == "distances":
                 state["distances"] = np.array(
                     [observation.distance for observation in self.data], dtype=np.float32)
@@ -534,13 +547,13 @@ class BoxEnv(gym.Env):
     def get_observations(self):
         self.data.clear()
 
-        for delta_angle in range(self.cfg.agent_cfg.obs_num):
+        for delta_angle in range(self.cfg.agent.obs_num):
             # absolute angle for the observation vector
-            # based on self.cfg.agent_cfg.obs_range
+            # based on self.cfg.agent.obs_range
             angle = self.get_observation_angle(delta_angle)
 
-            observation_end = (self.agent_head.x + math.cos(angle) * self.cfg.agent_cfg.obs_max_dist,
-                               self.agent_head.y + math.sin(angle) * self.cfg.agent_cfg.obs_max_dist)
+            observation_end = (self.agent_head.x + math.cos(angle) * self.cfg.agent.obs_max_dist,
+                               self.agent_head.y + math.sin(angle) * self.cfg.agent.obs_max_dist)
 
             callback = RayCastClosestCallback()
 
@@ -572,18 +585,18 @@ class BoxEnv(gym.Env):
         return state
 
     def update_agent_head(self):
-        if self.cfg.agent_cfg.head_type == AgentHeadType.EDGE:
+        if self.cfg.agent.head_type == AgentHeadType.EDGE:
             self.agent_head = b2Vec2(
                 (self.agent_body.position.x + math.cos(
-                    self.agent_body.angle) * (self.agent_size.x - self.cfg.agent_cfg.head_inside)),
+                    self.agent_body.angle) * (self.agent_size.x - self.cfg.agent.head_inside)),
                 (self.agent_body.position.y + math.sin(
-                    self.agent_body.angle) * (self.agent_size.x - self.cfg.agent_cfg.head_inside)))
-        elif self.cfg.agent_cfg.head_type == AgentHeadType.CENTER:
+                    self.agent_body.angle) * (self.agent_size.x - self.cfg.agent.head_inside)))
+        elif self.cfg.agent.head_type == AgentHeadType.CENTER:
             self.agent_head = self.agent_body.position
 
     def get_observation_angle(self, delta_angle):
         try:
-            return self.agent_body.angle - (self.cfg.agent_cfg.obs_range / 2) + (self.cfg.agent_cfg.obs_range / (self.cfg.agent_cfg.obs_num - 1) * delta_angle)
+            return self.agent_body.angle - (self.cfg.agent.obs_range / 2) + (self.cfg.agent.obs_range / (self.cfg.agent.obs_num - 1) * delta_angle)
         except ZeroDivisionError:
             return self.agent_body.angle
 
@@ -632,4 +645,4 @@ class BoxEnv(gym.Env):
         return self.cfg.world_width, self.cfg.world_height
 
     def world_coord(self, point: b2Vec2) -> b2Vec2:
-        return b2Vec2(point.x / self.cfg.ppm, (self.cfg.screen_layout.height - point.y) / self.cfg.ppm) - self.cfg.world_pos
+        return b2Vec2(point.x / self.cfg.ppm, (self.cfg.screen.height - point.y) / self.cfg.ppm) - self.cfg.world_pos

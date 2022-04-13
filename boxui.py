@@ -244,7 +244,13 @@ class BoxUI():
             design_data.effect = {"type": EffectType.APPLY_FORCE,
                                   "value": [0, 0]}  # TODO: let value be choosen at runtime
         elif set_type == SetType.PREVIOUS:
+            # indexes
+            design_data.dict_ix = self.design_data.dict_ix
+            design_data.params_ix = self.design_data.params_ix
+            design_data.effect_ix = self.design_data.effect_ix
+            
             design_data.params = self.design_data.params.copy()
+            design_data.effect = self.design_data.effect.copy()
         elif set_type == SetType.RANDOM:
             types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE,
                      BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
@@ -261,8 +267,7 @@ class BoxUI():
                                   "lin_damping": random.uniform(0, 0.001),
                                   "ang_damping": random.uniform(0, 0.001)}
             # TODO: random effects
-            design_data.effect = {"type": EffectType.APPLY_FORCE,
-                                  "value": [0, 0]}
+        design_data.dicts = [design_data.params, design_data.effect]
         return design_data
 
     def user_input(self):
@@ -341,6 +346,7 @@ class BoxUI():
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # use created world
                         self.set_mode(UIMode.USE_CONFIRMATION)
+                        print([b.effect for b in self.design_bodies])
                     pass
                 elif event.key == pg.K_m:
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE):
@@ -361,6 +367,12 @@ class BoxUI():
                             self.set_mode(UIMode.ROTATE)
                     elif self.mode == UIMode.ROTATE:
                         self.set_mode(UIMode.RESIZE)
+                    pass
+                elif event.key == pg.K_e:
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                        # TODO: shift for reverse toggle
+                        self.design_data.dict_ix = (self.design_data.dict_ix + 1) % len(self.design_data.dicts)
+                        pass
                     pass
                 elif event.key == pg.K_UP:
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
@@ -397,9 +409,9 @@ class BoxUI():
                 # 1 - left click
                 if event.button == 1:
                     if self.mode == UIMode.RESIZE:
-                        self.set_points(from_design=True)
+                        self.set_points(from_rotate=True)
                     elif self.mode in (UIMode.ROTATE, UIMode.MOVE):
-                        self.set_points(from_design=False)
+                        self.set_points(from_rotate=False)
                         self.set_mode(UIMode.RESIZE)
                     elif self.mode == UIMode.SIMULATION:
                         # TODO: check for mouse pos and perform action
@@ -447,8 +459,8 @@ class BoxUI():
                     self.design_body_ix + inc) % len(self.design_bodies)
             self.design_data = self.design_bodies[self.design_body_ix]
 
-    def set_points(self, from_design: bool):
-        if from_design:
+    def set_points(self, from_rotate: bool):
+        if from_rotate:
             mouse_pos = b2Vec2(pg.mouse.get_pos())
             # TODO: check for mouse pos and perform action like select bodies
             points_num = len(self.design_data.points)
@@ -510,15 +522,20 @@ class BoxUI():
             inc = 1
         else:
             inc = -1
-        # TODO: shift space to toggle -1
-        if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
-                self.design_data.params["type"] == BodyType.MOVING_ZONE:
-            self.design_data.params_ix = (
-                self.design_data.params_ix + inc) % len(list(self.design_data.params))
+        if self.design_data.dicts[self.design_data.dict_ix] == self.design_data.params:
+            if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
+                    self.design_data.params["type"] == BodyType.MOVING_ZONE:
+                self.design_data.params_ix = (
+                    self.design_data.params_ix + inc) % len(list(self.design_data.params))
+            else:
+                # TODO: only toggle static bodies params not hardcoded
+                self.design_data.params_ix = (
+                    self.design_data.params_ix + inc) % 3
+        elif self.design_data.dicts[self.design_data.dict_ix] == self.design_data.effect:
+            self.design_data.effect_ix = (self.design_data.effect_ix + inc) % len(self.design_data.effect)
+            pass
         else:
-            # TODO: only toggle static bodies params not hardcoded
-            self.design_data.params_ix = (
-                self.design_data.params_ix + inc) % 3
+            assert False and "Added something to self.design_data.dicts?"
 
     def modify_param(self, increase=True):
         param_name = list(self.design_data.params)[self.design_data.params_ix]
