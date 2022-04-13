@@ -43,8 +43,8 @@ class BoxUI():
         # setting up design variables
         self.design_data = self.get_design_data(set_type=SetType.DEFAULT)
         # self.set_type = SetType.DEFAULT
-        # self.set_type = SetType.PREVIOUS
-        self.set_type = SetType.RANDOM
+        self.set_type = SetType.PREVIOUS
+        # self.set_type = SetType.RANDOM
 
         # pg setup
         self.screen = pg.display.set_mode(
@@ -81,7 +81,6 @@ class BoxUI():
         # can save and use using keys from 0 to 9
         self.saved_designs: List[DesignData] = [None]*10
 
-        logging.basicConfig(level=logging.DEBUG)
         info("BoxUI created")
 
         pass
@@ -119,6 +118,7 @@ class BoxUI():
 
         # TODO: fix that when designing and quit confirmation is asked
         # the observation vectors of the agente can be seen
+        self.render_world()
         if self.mode == UIMode.SIMULATION or (self.prev_mode == UIMode.SIMULATION and self.mode == UIMode.QUIT_CONFIRMATION):
             self.render_action()
             self.render_observations()
@@ -134,7 +134,6 @@ class BoxUI():
             self.render_design()
             if self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE):
                 self.render_input()
-        self.render_world()
 
         if self.mode == UIMode.QUIT_CONFIRMATION:
             self.render_confirmation("QUIT")

@@ -1,9 +1,9 @@
 import json
 import math
 import random
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import IntEnum
-from logging import info, warn
+from logging import debug, info, warn
 from typing import Dict, List
 
 import gym
@@ -121,7 +121,7 @@ class BoxEnv(gym.Env):
 
         # setting configuration based on deafults
         # needed before using self.cfg
-        self.default_cfg()
+        self.load_conf("config.json")
 
         # initializing UI
         self.ui = BoxUI(self, self.cfg.screen_layout,
@@ -204,12 +204,6 @@ class BoxEnv(gym.Env):
             self.world.DestroyBody(body)
         self.ui.quit()
 
-    def default_cfg(self):
-        self.cfg = EnvCfg()
-        self.cfg.agent_cfg.obs_keys = ["distances", "body_types", "position",
-                                       "contacts", "body_velocities", "linear_velocity", "velocity_mag"]
-        pass
-
     def save_conf(self, filename="config.json"):
         print(self.ui.dataclass_to_dict(self.cfg))
         with open(filename, "w") as f:
@@ -219,16 +213,27 @@ class BoxEnv(gym.Env):
     def load_conf(self, filename="config.json"):
         with open(filename, "r") as f:
             self.cfg = EnvCfg(**json.load(f))
-        if isinstance(self.cfg.design_bodies, list):
-            for bix, body in enumerate(self.cfg.design_bodies):
-                if len(body["points"]) == 2:  # checking for valid body
-                    self.cfg.design_bodies[bix] = DesignData(**body)
-        # if there is only one design it will the above loop would iterate
-        # through the keys instead of the designs
-        elif isinstance(self.cfg.design_bodies, dict):
-            if len(self.cfg.design_bodies["points"]) == 2:  # checking for valid body
-                self.cfg.design_bodies[bix] = DesignData(**body)
+
+        # design bodies
+        for bix, body in enumerate(self.cfg.design_bodies):
+            # TODO: warning!! Here the type of the fields is not
+            # guaranteed to be the same as the hint in the dataclass
+            # definition
+            # Example: points which is a list of b2Vec2, here is just
+            # a list of 2-elements lists
+            self.cfg.design_bodies[bix] = DesignData(**body)
+
+        # screen layout
         self.cfg.screen_layout = ScreenLayout(**self.cfg.screen_layout)
+        self.cfg.screen_layout.size = b2Vec2(self.cfg.screen_layout.size)
+        self.cfg.screen_layout.simulation_pos = b2Vec2(self.cfg.screen_layout.simulation_pos)
+        self.cfg.screen_layout.simulation_size = b2Vec2(self.cfg.screen_layout.simulation_size)
+        self.cfg.screen_layout.board_pos = b2Vec2(self.cfg.screen_layout.board_pos)
+        self.cfg.screen_layout.board_size = b2Vec2(self.cfg.screen_layout.board_size)
+        self.cfg.screen_layout.popup_size = b2Vec2(self.cfg.screen_layout.popup_size)
+        self.cfg.screen_layout.popup_pos = b2Vec2(self.cfg.screen_layout.popup_pos)
+
+        # agent
         self.cfg.agent_cfg = AgentCfg(**self.cfg.agent_cfg)
 
         self.create_bodies()

@@ -1,4 +1,5 @@
 from typing import List
+from logging import debug
 
 from Box2D import b2Body, b2Contact, b2ContactListener, b2Vec2
 
@@ -104,7 +105,7 @@ class ContactListener(b2ContactListener):
         pass
 
     def handle_agent_contact(self, contact: b2Contact):
-
+        # TODO: buxfix KeyError
         if contact.fixtureA.body.userData.type == BodyType.AGENT:
             agent = contact.fixtureA.body
             body = contact.fixtureB.body
