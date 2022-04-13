@@ -285,6 +285,9 @@ class BoxEnv(gym.Env):
                 self.create_body(design)
 
     def create_body(self, design_data: DesignData):
+
+        print(design_data.delta_angle)
+
         points = [self.world_coord(b2Vec2(point))
                   for point in design_data.vertices]
         try:

@@ -505,7 +505,6 @@ class BoxUI():
             self.design_data.points[0] = self.design_data.vertices[0]
             self.design_data.points[1] = self.design_data.vertices[2]
             self.design_data.init_vertices = self.design_data.vertices.copy()
-            self.design_data.delta_angle = 0
 
     def toggle_param(self):
         if self.reverse_toggle == False:
