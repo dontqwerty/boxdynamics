@@ -608,6 +608,12 @@ class BoxUI():
                     elif isinstance(sub_value, b2Vec2):
                         # list of b2Vec2
                         dump_db[-1][1].append(list(sub_value))
+                    elif isinstance(sub_value, (int, float, str)):
+                        # list of strings
+                        dump_db[-1][1].append(sub_value)
+                    else:
+                        print()
+                        assert False and "Unexpected type in dataclass {} {}".format(name, type(sub_value))
             elif isinstance(value, b2Vec2):
                 debug("b2Vec2 {} : {}".format(name, value))
                 dump_db[-1].append(list(value))

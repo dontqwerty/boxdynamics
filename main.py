@@ -2,10 +2,8 @@ from boxdynamics import BoxEnv
 
 env = BoxEnv()
 
-# env.world_design()
-
-# env.save_conf()
-
+env.world_design()
+env.save_conf()
 env.load_conf()
 
 total_reward = 0

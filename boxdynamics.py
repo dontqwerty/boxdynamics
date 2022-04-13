@@ -211,6 +211,7 @@ class BoxEnv(gym.Env):
         pass
 
     def save_conf(self, filename="config.json"):
+        print(self.ui.dataclass_to_dict(self.cfg))
         with open(filename, "w") as f:
             json.dump(self.ui.dataclass_to_dict(self.cfg), f)
         pass
@@ -227,6 +228,7 @@ class BoxEnv(gym.Env):
         elif isinstance(self.cfg.design_bodies, dict):
             if len(self.cfg.design_bodies["points"]) == 2:  # checking for valid body
                 self.cfg.design_bodies[bix] = DesignData(**body)
+        self.cfg.screen_layout = ScreenLayout(**self.cfg.screen_layout)
         self.cfg.agent_cfg = AgentCfg(**self.cfg.agent_cfg)
 
         self.create_bodies()
