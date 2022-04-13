@@ -255,7 +255,6 @@ class BoxUI():
             types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE,
                      BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
             design_data.params = {"type": random.choice(types),
-                                  # design_data.params = {"type": BodyType(random.choice(types)),
                                   "reward": random.uniform(-1, 1),
                                   "level": 0,
                                   "lin_velocity": random.uniform(0, 10),
@@ -266,7 +265,8 @@ class BoxUI():
                                   "friction": random.uniform(0, 0.001),
                                   "lin_damping": random.uniform(0, 0.001),
                                   "ang_damping": random.uniform(0, 0.001)}
-            # TODO: random effects
+            design_data.effect = {"type": EffectType.APPLY_FORCE,
+                                  "value": [1000000, 1000000]}
         design_data.dicts = [design_data.params, design_data.effect]
         return design_data
 
@@ -523,6 +523,7 @@ class BoxUI():
         else:
             inc = -1
         if self.design_data.dicts[self.design_data.dict_ix] == self.design_data.params:
+            # we are toggling design params
             if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
                     self.design_data.params["type"] == BodyType.MOVING_ZONE:
                 self.design_data.params_ix = (
@@ -532,6 +533,7 @@ class BoxUI():
                 self.design_data.params_ix = (
                     self.design_data.params_ix + inc) % 3
         elif self.design_data.dicts[self.design_data.dict_ix] == self.design_data.effect:
+            # we are toggling effect params
             self.design_data.effect_ix = (self.design_data.effect_ix + inc) % len(self.design_data.effect)
             pass
         else:
