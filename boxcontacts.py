@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import List
 from logging import debug
 
@@ -134,10 +135,11 @@ class ContactListener(b2ContactListener):
         if contact.fixtureA.body.userData.type == BodyType.BORDER:
             # body B is the moving one
             body = contact.fixtureB.body
+            value = contact.fixtureB.body.linearVelocity * -1
         else:
             # body A is the moving one
             body = contact.fixtureA.body
+            value = contact.fixtureA.body.linearVelocity * -1
 
-        value = contact.fixtureA.body.linearVelocity * -1
         self.effect(body, EffectType.SET_VELOCITY, value)
         pass

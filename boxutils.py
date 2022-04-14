@@ -1,3 +1,4 @@
+import logging
 import math
 from dataclasses import is_dataclass
 from enum import IntEnum
@@ -40,9 +41,11 @@ def dataclass_to_dict(data):
                     elif isinstance(sub_value, (int, float, str)):
                         # list of strings
                         dump_db[-1][1].append(sub_value)
+                    elif isinstance(sub_value, dict):
+                        dump_db[-1][1].append(sub_value.copy())
                     else:
-                        print()
-                        assert False and "Unexpected type in dataclass {} {}".format(name, type(sub_value))
+                        logging.error("Unexpected type in dataclass".format(name, type(sub_value)))
+                        assert False
             elif isinstance(value, b2Vec2):
                 debug("b2Vec2 {} : {}".format(name, value))
                 dump_db[-1].append(list(value))

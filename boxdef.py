@@ -25,8 +25,8 @@ class BodyShape(IntEnum):
 class EffectType(IntEnum):
     SET_VELOCITY = 0  # sets given body variable
     APPLY_FORCE = 1
-    DONE = 2  # sets self.done in BoxEnv to True
-    RESET = 3  # calls BoxEnv().reset()
+    DONE = 2  # TODO: sets self.done in BoxEnv to True
+    RESET = 3  # TODO: calls BoxEnv().reset()
 
 
 class UIMode(IntEnum):

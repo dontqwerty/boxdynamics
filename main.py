@@ -2,7 +2,7 @@ from boxdynamics import BoxEnv
 
 env = BoxEnv()
 
-env.world_design()
+# env.world_design()
 # env.save_conf()
 # env.load_conf()
 

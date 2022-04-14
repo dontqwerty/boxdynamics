@@ -4,7 +4,6 @@ import math
 import random
 from dataclasses import is_dataclass
 from enum import IntEnum
-from logging import debug, info
 from time import sleep
 from typing import Dict, List
 
@@ -17,7 +16,7 @@ from boxdef import (BodyShape, BodyType, DesignData, EffectType, ScreenLayout,
                     UIMode)
 from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle
 
-DESIGN_SLEEP = 0.01  # delay in seconds while designing world
+DESIGN_SLEEP = 0.001  # delay in seconds while designing world
 
 
 class SetType(IntEnum):
@@ -47,8 +46,14 @@ class BoxUI():
         # self.set_type = SetType.RANDOM
 
         # pg setup
-        self.screen = pg.display.set_mode(
-            (self.layout.width, self.layout.height), 0, 32)
+        pg.init()
+        if self.layout.size == b2Vec2(0, 0): # fullscreen
+            info = pg.display.Info()
+            self.screen = pg.display.set_mode((info.current_w, info.current_h), pg.DOUBLEBUF | pg.FULLSCREEN, 32)
+        else:
+            self.screen = pg.display.set_mode(
+                (self.layout.width, self.layout.height), 0, 32)
+
         pg.display.set_caption('Box Dynamics')
         self.clock = pg.time.Clock()
         pg.font.init()  # to render text
@@ -81,7 +86,7 @@ class BoxUI():
         # can save and use using keys from 0 to 9
         self.saved_designs: List[DesignData] = [None]*10
 
-        info("BoxUI created")
+        logging.info("BoxUI created")
 
         pass
 
@@ -96,7 +101,7 @@ class BoxUI():
     def set_mode(self, mode: UIMode):
         self.prev_mode = self.mode
         self.mode = mode
-        info("Old mode {}, new mode {}".format(
+        logging.info("Old mode {}, new mode {}".format(
             self.prev_mode.name, self.mode.name))
 
     def render(self):
@@ -346,7 +351,6 @@ class BoxUI():
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # use created world
                         self.set_mode(UIMode.USE_CONFIRMATION)
-                        print([b.effect for b in self.design_bodies])
                     pass
                 elif event.key == pg.K_m:
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE):
@@ -440,7 +444,7 @@ class BoxUI():
                 pass
             elif event.type == pg.MOUSEMOTION:
                 if self.mode == UIMode.RESIZE:
-                    self.scale()
+                    self.resize()
                 elif self.mode == UIMode.ROTATE:
                     self.rotate(first=False)
                 elif self.mode == UIMode.MOVE:
@@ -475,7 +479,7 @@ class BoxUI():
             self.design_bodies.append(self.design_data)
             self.design_data = self.get_design_data(set_type=self.set_type)
 
-    def scale(self):
+    def resize(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
         points_num = len(self.design_data.points)
         if points_num > 0:
@@ -600,17 +604,17 @@ class BoxUI():
             with open(filename, "w") as f:
                 json.dump(dump_db, f)
         except FileNotFoundError:
-            info("File not found: {}".format(filename))
+            logging.info("File not found: {}".format(filename))
             return
 
-        info("Saved design {}".format(filename))
+        logging.info("Saved design {}".format(filename))
 
     def load_design(self, filename):
         try:
             with open(filename, "r") as f:
                 loaded_db = json.load(f)
         except FileNotFoundError:
-            info("File not found: {}".format(filename))
+            logging.info("File not found: {}".format(filename))
             return
 
         # TODO: append to existing design or overwrite?
@@ -622,7 +626,7 @@ class BoxUI():
             design.init_vertices = [b2Vec2(p) for p in design.init_vertices]
             self.design_bodies.append(design)
 
-        info("Loaded design {}".format(filename))
+        logging.info("Loaded design {}".format(filename))
 
     def get_angle(self, pivot: b2Vec2, point: b2Vec2):
         delta: b2Vec2 = point - pivot
@@ -787,7 +791,7 @@ class BoxUI():
             self.font, self.layout.normal_font)
 
         # can't be toggled like params
-        data = ["Shape: {}".format(self.design_data.shape.name),
+        data = ["Shape: {}".format(self.design_data.shape),
                 "Angle: {}".format(
                     round(-360 * self.design_data.delta_angle / (2 * math.pi), 3))]
 
