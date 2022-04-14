@@ -300,6 +300,15 @@ class BoxEnv(gym.Env):
                 print(design.effect)
                 self.create_body(design)
 
+        # body: b2Body = self.world.CreateDynamicBody(
+        #     position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0, bullet=False)
+        # _: b2Fixture = body.CreatePolygonFixture(
+        #     box=size, density=1)
+
+        # body: b2Body = self.world.CreateKinematicBody(position=b2Vec2(20, 80), angle=0, linearVelocity=b2Vec2(0, -10), angularVelocity=0, bullet=False)
+        # _: b2Fixture = body.CreatePolygonFixture(box=b2Vec2(10,10), density=1)
+        # body.userData = self.get_moving_obstacle_data()
+
     def create_body(self, design_data: DesignData):
         points = [self.world_coord(b2Vec2(point))
                   for point in design_data.vertices]

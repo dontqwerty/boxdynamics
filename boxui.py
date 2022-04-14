@@ -119,7 +119,7 @@ class BoxUI():
         pos = b2Vec2(self.border_width, self.border_width / 2)
         self.screen.blit(text_surface, pos)
 
-        self.render_commands()
+        # self.render_commands()
 
         # TODO: fix that when designing and quit confirmation is asked
         # the observation vectors of the agente can be seen
@@ -771,8 +771,9 @@ class BoxUI():
             self.font, self.layout.big_font)
 
         design_pos = b2Vec2(
-            0, self.commands_surface_height + self.border_width * 3)
+            0, self.border_width * 3)
         pos = design_pos.copy()
+        pos = b2Vec2(self.border_width, self.title_surface_height + self.border_width)
 
         # pg.draw.rect(self.screen, boxcolors.BLACK,
         #              pg.Rect(pos.x - self.border_width,
@@ -781,7 +782,7 @@ class BoxUI():
         #                      self.design_surface_height), width=self.border_width)
 
         # title
-        pos += b2Vec2(self.border_width, self.border_width)
+        # pos += b2Vec2(self.border_width, self.border_width)
         s = "DESIGN DATA"
         text_surface = text_font.render(
             s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
