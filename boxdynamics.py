@@ -13,7 +13,7 @@ from Box2D import b2Body, b2Fixture, b2PolygonShape, b2Vec2, b2World
 
 import boxcolors as color
 from boxcontacts import ContactListener
-from boxdef import (BodyShape, BodyType, DesignData, EffectType, ScreenLayout,
+from boxdef import (BodyType, DesignData, EffectType, ScreenLayout,
                     UIMode)
 from boxraycast import RayCastClosestCallback
 from boxui import BoxUI
@@ -91,7 +91,6 @@ class EnvCfg:
 class BodyData:
     type: IntEnum = BodyType.DEFAULT
     color: tuple = color.WHITE
-    shape: IntEnum = BodyShape.BOX
     # list of bodies in contact with this body
     contacts: List[b2Body] = field(default_factory=list)
     reward: float = 0  # reward when agents hits the object

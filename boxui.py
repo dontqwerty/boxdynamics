@@ -12,7 +12,7 @@ import pygame as pg
 from Box2D import b2Body, b2Vec2
 
 import boxcolors
-from boxdef import (BodyShape, BodyType, DesignData, EffectType, ScreenLayout,
+from boxdef import (BodyType, DesignData, EffectType, ScreenLayout,
                     UIMode)
 from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle
 
@@ -112,13 +112,14 @@ class BoxUI():
         # title
         text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
-        s = "{}".format(self.mode.name)
+        s = "Mode {}".format(self.mode.name)
         text_surface = text_font.render(
             s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.title_surface_height = text_surface.get_height()
         pos = b2Vec2(self.border_width, self.border_width / 2)
         self.screen.blit(text_surface, pos)
 
+        # TODO: render commands
         # self.render_commands()
 
         # TODO: fix that when designing and quit confirmation is asked
@@ -333,11 +334,6 @@ class BoxUI():
                 elif event.key == pg.K_LSHIFT:
                     self.reverse_toggle = True
                     pass
-                # elif event.key == pg.K_c:
-                #     if self.mode in (UIMode.RESIZE, UIMode.ROTATE):
-                #         # TODO: toggle shape
-                #         self.design_data.shape = BodyShape.BOX
-                #         pass
                 elif event.key == pg.K_s:
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # asking to input file name
@@ -366,7 +362,7 @@ class BoxUI():
                     if self.mode in (UIMode.RESIZE, UIMode.MOVE):
                         # rotating body
                         points_num = len(self.design_data.points)
-                        if points_num == 2 and self.design_data.shape == BodyShape.BOX:
+                        if points_num == 2:
                             self.rotate(first=True)
                             self.set_mode(UIMode.ROTATE)
                     elif self.mode == UIMode.ROTATE:
@@ -735,17 +731,12 @@ class BoxUI():
 
         for body, _ in bodies_levels:
             color = self.env.get_data(body.params["type"]).color
-            if body.shape == BodyShape.BOX:
-                try:
-                    pg.draw.polygon(
-                        self.screen, color, body.vertices)
-                except ValueError:
-                    # wait another cycle for the vertices to be there
-                    pass
-            elif body.shape == BodyShape.CIRCLE:
-                radius = (body.points[0] - body.points[1]).length
-                pg.draw.circle(
-                    self.screen, body.color, body.points[0], radius)
+            try:
+                pg.draw.polygon(
+                    self.screen, color, body.vertices)
+            except ValueError:
+                # wait another cycle for the vertices to be there
+                pass
             if body == self.design_data:
                 pg.draw.circle(self.screen, boxcolors.YELLOW,
                                body.points[0], 5)
@@ -792,8 +783,7 @@ class BoxUI():
             self.font, self.layout.normal_font)
 
         # can't be toggled like params
-        data = ["Shape: {}".format(self.design_data.shape),
-                "Angle: {}".format(
+        data = ["Angle: {}".format(
                     round(-360 * self.design_data.delta_angle / (2 * math.pi), 3))]
 
         for ix, s in enumerate(data):
@@ -891,9 +881,8 @@ class BoxUI():
                              {"key": "UP", "description": "increase parameter"},
                              {"key": "DOWN", "description": "decrease parameter"},
                              {"key": "RIGHT", "description": "increase parameter inc"},
-                             {"key": "LEFT", "description": "decrease parameter inc"}]
-            if self.design_data.shape == BodyShape.BOX:
-                self.commands.append({"key": "A", "description": "rotate"})
+                             {"key": "LEFT", "description": "decrease parameter inc"},
+                             {"key": "A", "description": "rotate"}]
         elif self.mode == UIMode.ROTATE:
             self.commands = [{"key": "A", "description": "finish rotating"},
                              {"key": "mouse movement", "description": "rotate"},
