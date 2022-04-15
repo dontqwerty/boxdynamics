@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
+from turtle import width
 from typing import Dict, List
 
 from Box2D import b2Vec2
@@ -57,17 +58,15 @@ class ScreenLayout:
 
 @dataclass
 class DesignData:
-    selected: bool = False  # TODO: selectable
-
-    # center and radius for circles
+    valid: bool = False
     points: List[b2Vec2] = field(default_factory=list)
-    # all four vertices for rectangles
     vertices: List[b2Vec2] = field(default_factory=list)
-    # body rotation
-    rotated: bool = False
-    init_vertices: List[b2Vec2] = field(default_factory=list)
-    initial_angle: float = 0.0
+    width: float = 0.0
+    height: float = 0.0
+    angle: float = 0.0
     delta_angle: float = 0.0
+    moved: bool = False
+    rotated: bool = False
 
     # TODO: toggle color
     color: tuple = field(default=boxcolors.STATIC_OBSTACLE)

@@ -112,7 +112,7 @@ class Observation:
 class BoxEnv(gym.Env):
     def __init__(self) -> None:
         logging.basicConfig(
-            format='%(levelname)s: %(asctime)s: %(message)s', level=logging.INFO)
+            format='%(levelname)s: %(asctime)s: %(message)s', level=logging.DEBUG)
 
         # initializing base class
         super(BoxEnv, self).__init__()
@@ -246,6 +246,7 @@ class BoxEnv(gym.Env):
         self.cfg.agent = AgentCfg(**self.cfg.agent)
 
         self.create_bodies()
+        logging.info("Config file loaded correctly")
         pass
 
     def set_reward(self):
@@ -296,7 +297,7 @@ class BoxEnv(gym.Env):
         # creates all the bodies in the enviroment configuration
         if isinstance(self.cfg.design_bodies, list):
             for design in self.cfg.design_bodies:
-                print(design.effect)
+                logging.debug("Creating object from design {}".format(design))
                 self.create_body(design)
 
         # body: b2Body = self.world.CreateDynamicBody(
@@ -323,7 +324,7 @@ class BoxEnv(gym.Env):
         width = (points[0] - points[1]).length / 2
         height = (points[1] - points[2]).length / 2
         size = (width, height)
-        angle = -design_data.delta_angle
+        angle = -design_data.angle
 
         type = design_data.params["type"]
         if type == BodyType.AGENT:

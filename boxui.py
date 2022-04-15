@@ -1,11 +1,13 @@
 import json
 import logging
 import math
+from multiprocessing.connection import answer_challenge
 import random
 from dataclasses import is_dataclass
 from enum import IntEnum
 from time import sleep
 from typing import Dict, List
+from cv2 import norm
 
 import numpy as np
 import pygame as pg
@@ -14,7 +16,7 @@ from Box2D import b2Body, b2Vec2
 import boxcolors
 from boxdef import (BodyType, DesignData, EffectType, ScreenLayout,
                     UIMode)
-from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle
+from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle, angle_point
 
 DESIGN_SLEEP = 0.001  # delay in seconds while designing world
 
@@ -41,6 +43,7 @@ class BoxUI():
 
         # setting up design variables
         self.design_data = self.get_design_data(set_type=SetType.DEFAULT)
+        self.design_bodies.append(self.design_data)
         # self.set_type = SetType.DEFAULT
         self.set_type = SetType.PREVIOUS
         # self.set_type = SetType.RANDOM
@@ -81,6 +84,8 @@ class BoxUI():
 
         self.reverse_toggle = False
         self.prev_mouse_pos = None
+        self.zero_angle = 0
+        self.normal = True
 
         # initially empty list of design_data values that the user
         # can save and use using keys from 0 to 9
@@ -194,46 +199,50 @@ class BoxUI():
         b2Vec2(text_surface.get_size())
         self.screen.blit(text_surface, pos)
 
+    def copy_design_data(self, design: DesignData):
+        design_dict: Dict[str,
+                        DesignData] = design.__dict__  # pointer
+        design_data: Dict[str, DesignData] = dict()
+
+        # checking for fields that need to be copied manually
+        for key in list(design_dict.keys()):
+            # b2Vec2
+            if type(design_dict[key]) is b2Vec2:
+                design_data[key] = (design_dict['key'].copy())
+            # list of b2Vec2
+            elif isinstance(design_dict[key], list) and all(isinstance(val, b2Vec2) for val in design_dict[key]):
+                design_data[key] = list()
+                for val in design_dict[key]:
+                    design_data[key].append(val.copy())
+            # dictionary
+            elif isinstance(design_dict[key], dict):
+                design_data[key] = design_dict[key].copy()
+            else:
+                design_data[key] = design_dict[key]
+        design_data = DesignData(**design_data)
+        return design_data
+
     def copy_design_bodies(self):
         design_copy = list()
 
-        count = 0
         for body in self.design_bodies:
-            design_dict: Dict[str,
-                            DesignData] = body.__dict__  # pointer
-            design_data: Dict[str, DesignData] = dict()
+            if body.valid:
+                design_copy.append(self.copy_design_data(design=body))
 
-            # checking for fields that need to be copied manually
-            for key in list(design_dict.keys()):
-                # b2Vec2
-                if type(design_dict[key]) is b2Vec2:
-                    design_data[key] = (design_dict['key'].copy())
-                # list of b2Vec2
-                elif isinstance(design_dict[key], list) and all(isinstance(val, b2Vec2) for val in design_dict[key]):
-                    design_data[key] = list()
-                    for val in design_dict[key]:
-                        design_data[key].append(val.copy())
-                # dictionary
-                elif isinstance(design_dict[key], dict):
-                    design_data[key] = design_dict[key].copy()
-                else:
-                    design_data[key] = design_dict[key]
-
-
-            design_data = DesignData(**design_data)
-            design_copy.append(design_data)
-
-            # TODO: remove or make proper function
-            assert design_copy[-1] == body and "Must equal"
-            design_copy[-1].points[0].x += 1
-            assert design_copy != body and "Must differ"
-            design_copy[-1].points[0].x -= 1
-            assert design_copy[-1] == body and "Must equal 2"
+                # TODO: remove or make proper function
+                assert design_copy[-1] == body and "Must equal"
+                design_copy[-1].points[0].x += 1
+                assert design_copy != body and "Must differ"
+                design_copy[-1].points[0].x -= 1
+                assert design_copy[-1] == body and "Must equal 2"
 
         return design_copy
 
     def get_design_data(self, set_type=SetType.DEFAULT):
         design_data = DesignData()
+        design_data.points = [None] * 2
+        design_data.vertices = [None] * 4
+
         # use copiable data types
         if set_type == SetType.DEFAULT:
             design_data.params = {"type": BodyType.STATIC_OBSTACLE,
@@ -267,6 +276,7 @@ class BoxUI():
                                   "lin_velocity_angle": random.uniform(0, 2*math.pi),
                                   "ang_velocity": random.uniform(-5, 5),
                                   "density": 0.5,
+                                  # TODO: remove inertia
                                   "inertia": 0,
                                   "friction": random.uniform(0, 0.001),
                                   "lin_damping": random.uniform(0, 0.001),
@@ -287,7 +297,6 @@ class BoxUI():
                             self.load_design(self.text_input)
                         self.text_input = ""
                         self.set_mode(self.prev_mode)
-                        # return
                     elif event.key == pg.K_BACKSPACE:
                         self.text_input = self.text_input[:-1]
                     elif event.key == pg.K_ESCAPE:
@@ -326,11 +335,12 @@ class BoxUI():
                     # abort current changes to body
                     # TODO: ask for confirmation (?)
                     try:
-                        self.design_bodies.pop()
+                        self.design_bodies.remove(self.design_data)
                     except IndexError:
+                        logging.debug("Can't remove design")
                         pass
-                    self.design_data = self.get_design_data(
-                        set_type=self.set_type)
+                    self.new_design()
+                    self.set_mode(UIMode.RESIZE)
                 elif event.key == pg.K_LSHIFT:
                     self.reverse_toggle = True
                     pass
@@ -351,7 +361,10 @@ class BoxUI():
                 elif event.key == pg.K_m:
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE):
                         # moving body
-                        self.move(first=True)
+                        points_num = len(self.design_data.points)
+                        if points_num == 2:
+                            self.move()
+                            self.set_mode(UIMode.MOVE)
                     elif self.mode == UIMode.MOVE:
                         self.set_mode(UIMode.RESIZE)
                     elif self.mode == UIMode.SIMULATION:
@@ -363,7 +376,7 @@ class BoxUI():
                         # rotating body
                         points_num = len(self.design_data.points)
                         if points_num == 2:
-                            self.rotate(first=True)
+                            self.rotate()
                             self.set_mode(UIMode.ROTATE)
                     elif self.mode == UIMode.ROTATE:
                         self.set_mode(UIMode.RESIZE)
@@ -408,10 +421,8 @@ class BoxUI():
             elif event.type == pg.MOUSEBUTTONDOWN:
                 # 1 - left click
                 if event.button == 1:
-                    if self.mode == UIMode.RESIZE:
-                        self.set_points(from_rotate=True)
-                    elif self.mode in (UIMode.ROTATE, UIMode.MOVE):
-                        self.set_points(from_rotate=False)
+                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                        self.set_points()
                         self.set_mode(UIMode.RESIZE)
                     elif self.mode == UIMode.SIMULATION:
                         # TODO: check for mouse pos and perform action
@@ -439,14 +450,31 @@ class BoxUI():
                         self.modify_param(increase=False)
                 pass
             elif event.type == pg.MOUSEMOTION:
-                if self.mode == UIMode.RESIZE:
-                    self.resize()
-                elif self.mode == UIMode.ROTATE:
-                    self.rotate(first=False)
-                elif self.mode == UIMode.MOVE:
-                    self.move(first=False)
-                    pass
+                if self.first_exists():
+                    if self.mode == UIMode.RESIZE:
+                        self.resize()
+                    elif self.mode == UIMode.ROTATE:
+                        self.rotate()
+                    elif self.mode == UIMode.MOVE:
+                        self.move()
+                        pass
                 pass
+
+        self.update_design()
+
+        # post-mode stuff
+        if self.prev_mode == UIMode.MOVE:
+            self.design_data.moved = False
+        elif self.prev_mode == UIMode.ROTATE:
+            self.design_data.rotated = False
+
+            # self.design_data.angle = self.get_angle(self.design_data.points[0], self.design_data.points[1]) - math.atan(self.design_data.height / self.design_data.width)
+
+    def first_exists(self):
+        return self.design_data.points[0] is not None
+    
+    def second_exists(self):
+        return self.design_data.points[1] is not None
 
     def toggle_design_body(self):
         if len(self.design_bodies):
@@ -459,63 +487,117 @@ class BoxUI():
                     self.design_body_ix + inc) % len(self.design_bodies)
             self.design_data = self.design_bodies[self.design_body_ix]
 
-    def set_points(self, from_rotate: bool):
-        if from_rotate:
-            mouse_pos = b2Vec2(pg.mouse.get_pos())
-            # TODO: check for mouse pos and perform action like select bodies
-            points_num = len(self.design_data.points)
-            if points_num == 0:
-                self.design_data.points.append(mouse_pos)
-            elif points_num == 2:
-                # reset design data
-                self.design_data = self.get_design_data(set_type=self.set_type)
+    def set_points(self):
+        mouse_pos = b2Vec2(pg.mouse.get_pos())
+        if not self.first_exists():
+            # setting first body point
+            self.design_data.points[0] = mouse_pos
         else:
-            self.design_bodies.pop()  # removing old body
-            # adding new updated body
-            self.design_bodies.append(self.design_data)
-            self.design_data = self.get_design_data(set_type=self.set_type)
+            # setting second body point and
+            # getting ready for new design
+            self.design_data.points[1] = mouse_pos
+            self.design_data.valid = True
+            # removing design pointer
+            self.design_bodies.remove(self.design_data)
+            # appending design copy
+            self.design_bodies.append(self.copy_design_data(self.design_data))
+            self.new_design()
+
+    def new_design(self):
+        self.design_data = self.get_design_data(set_type=self.set_type)
+        self.design_bodies.append(self.design_data)
+
+    def edit_design(self, design: DesignData):
+        design_ix = self.design_bodies.index(design)
+        self.design_data = self.design_bodies[design_ix]
+
+    def update_design(self):
+        if self.first_exists() and self.second_exists():
+            # dummy variables
+            p1 = self.design_data.points[0]
+            p3 = self.design_data.points[1]
+
+            if all(v is not None for v in self.design_data.vertices):
+                angle2 = self.design_data.angle
+                angle4 = angle2 + (math.pi / 2)
+                supposed_p2 = angle_point(angle2, self.design_data.width, self.design_data.points[0])
+                supposed_p4 = angle_point(angle4, self.design_data.height, self.design_data.points[0])
+
+                epsilon = 0.0001
+                if ((self.design_data.vertices[1] - supposed_p2).length > epsilon and (self.design_data.vertices[3] - supposed_p4).length > epsilon) or \
+                ((self.design_data.vertices[1] - supposed_p2).length <= epsilon and (self.design_data.vertices[3] - supposed_p4).length <= epsilon):
+                    angle1 = self.design_data.angle
+                    angle2 = angle1 + (math.pi / 2)
+                else:
+                    angle2 = self.design_data.angle
+                    angle1 = angle2 + (math.pi / 2)
+                    self.normal = False
+            else:
+                angle1 = self.design_data.angle
+                angle2 = angle1 + (math.pi / 2)
+
+            # calculating line equations
+            line11 = get_line_eq_angle(
+                p1, angle1)
+            line12 = get_line_eq_angle(
+                p1, angle2)
+            line21 = get_line_eq_angle(
+                p3, angle2)
+            line22 = get_line_eq_angle(
+                p3, angle1)
+
+            # calculating vertices with lines intersection
+            p2 = get_intersection(line11, line21)
+            p4 = get_intersection(line12, line22)
+
+            # calculating dimensions
+            if self.normal:
+                self.design_data.width = (p1 - p2).length
+                self.design_data.height = (p1 - p4).length
+            else:
+                self.design_data.width = (p1 - p4).length
+                self.design_data.height = (p1 - p2).length
+            self.design_data.vertices = [p1, p2, p3, p4]
+        pass
 
     def resize(self):
+        assert self.first_exists() and "Must exist one point to resize"
+        # setting second point
         mouse_pos = b2Vec2(pg.mouse.get_pos())
-        points_num = len(self.design_data.points)
-        if points_num > 0:
-            # removing old body
-            try:
-                self.design_bodies.remove(self.design_data)
-            except ValueError:
-                # there where no bodies to remove
-                pass
-            if points_num == 2:
-                self.design_data.vertices = self.get_vertices(
-                    self.design_data)
-                # replacing old point with new point on mouse position
-                self.design_data.points.pop()
-            # mouse motion after one point has been fixed
-            self.design_data.points.append(mouse_pos)
-            # new updated body
-            self.design_bodies.append(self.design_data)
+        self.design_data.points[1] = mouse_pos
 
-    def move(self, first: bool):
+        # line1 = get_line_eq_angle(point=self.design_data.points[0], angle=self.design_data.angle)
+        # line2 = get_line_eq_angle(point=self.design_data.points[1], angle=self.design_data.angle + math.pi)
+
+    def move(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
-        if first:
-            points_num = len(self.design_data.points)
-            if points_num == 2:
-                self.prev_mouse_pos = b2Vec2(pg.mouse.get_pos())
-                self.set_mode(UIMode.MOVE)
+        if self.design_data.moved is False:
+            self.prev_mouse_pos = b2Vec2(pg.mouse.get_pos())
+            self.design_data.moved = True
         else:
             delta_mouse = mouse_pos - self.prev_mouse_pos
-            # if self.prev_mouse_pos:
-            #     delta_mouse = mouse_pos - self.prev_mouse_pos
-            # else:
-            #     self.prev_mouse_pos = mouse_pos
-            #     delta_mouse = mouse_pos
             for point in self.design_data.vertices:
                 point += delta_mouse
             self.prev_mouse_pos = mouse_pos
 
             self.design_data.points[0] = self.design_data.vertices[0]
             self.design_data.points[1] = self.design_data.vertices[2]
-            self.design_data.init_vertices = self.design_data.vertices.copy()
+
+    def rotate(self):
+        mouse_pos = b2Vec2(pg.mouse.get_pos())
+        if self.design_data.rotated is False:
+            self.zero_angle2 = self.get_angle(self.design_data.points[0], mouse_pos)
+            self.zero_angle = math.atan(self.design_data.height / (self.design_data.width))
+            print(self.zero_angle, self.zero_angle2)
+            self.design_data.rotated = True
+        else:
+            diagonal = (self.design_data.points[1] - self.design_data.points[0]).length
+            diagonal_angle = self.get_angle(self.design_data.points[0], mouse_pos)
+            self.design_data.angle = diagonal_angle - self.zero_angle
+
+            self.design_data.points[1] = self.design_data.points[0] + b2Vec2(math.cos(diagonal_angle), math.sin(diagonal_angle)) * diagonal
+
+        # print(self.design_data.angle)
 
     def toggle_param(self):
         if self.reverse_toggle == False:
@@ -558,36 +640,6 @@ class BoxUI():
                 self.design_data.params[param_name] -= self.design_data.float_inc
         pass
 
-    def rotate(self, first: bool):
-        if first:
-            self.design_data.rotated = True
-
-            # initial mouse position
-            initial_mouse = b2Vec2(pg.mouse.get_pos())
-
-            # initial angle
-            self.design_data.initial_angle = self.get_angle(
-                self.design_data.points[0], initial_mouse)
-
-            # vertices when starting the rotation
-            self.design_data.init_vertices = self.design_data.vertices.copy()
-        else:
-            mouse_pos = b2Vec2(pg.mouse.get_pos())
-
-            self.design_data.delta_angle = self.get_angle(
-                self.design_data.points[0], mouse_pos) - self.design_data.initial_angle
-
-            # rotating every vertex
-            for vix, vertex in enumerate(self.design_data.vertices):
-                distance = (vertex - self.design_data.points[0]).length
-
-                init_angle = self.get_angle(
-                    self.design_data.points[0], self.design_data.init_vertices[vix])
-
-                final_angle = init_angle + self.design_data.delta_angle
-                self.design_data.vertices[vix] = self.design_data.points[0] + (
-                    b2Vec2(math.cos(final_angle), math.sin(final_angle)) * distance)
-
     def toggle_body_type(self, increase=True):
         self.design_data.params["type"] = self.toggle_enum(
             self.design_data.params["type"], skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT], increase=increase)
@@ -619,7 +671,6 @@ class BoxUI():
             design = DesignData(**body)
             design.points = [b2Vec2(p) for p in design.points]
             design.vertices = [b2Vec2(p) for p in design.vertices]
-            design.init_vertices = [b2Vec2(p) for p in design.init_vertices]
             self.design_bodies.append(design)
 
         logging.info("Loaded design {}".format(filename))
@@ -734,12 +785,13 @@ class BoxUI():
             try:
                 pg.draw.polygon(
                     self.screen, color, body.vertices)
-            except ValueError:
+                # showing circle on current design
+                if body == self.design_data:
+                    pg.draw.circle(self.screen, boxcolors.YELLOW,
+                                body.points[0], 5)
+            except TypeError:
                 # wait another cycle for the vertices to be there
                 pass
-            if body == self.design_data:
-                pg.draw.circle(self.screen, boxcolors.YELLOW,
-                               body.points[0], 5)
 
         self.render_design_data()
 
@@ -784,7 +836,7 @@ class BoxUI():
 
         # can't be toggled like params
         data = ["Angle: {}".format(
-                    round(-360 * self.design_data.delta_angle / (2 * math.pi), 3))]
+                    round(-360 * self.design_data.angle / (2 * math.pi), 3))]
 
         for ix, s in enumerate(data):
             pos += b2Vec2(0, text_surface.get_height())
@@ -931,36 +983,6 @@ class BoxUI():
                 # drawing intersection points
                 pg.draw.circle(
                     self.screen, boxcolors.INTERSECTION, end_point, 3)
-
-    def get_vertices(self, body: DesignData):
-        p1 = body.points[0]
-        p3 = body.points[1]
-        if body.rotated:
-
-            init_angle1 = self.get_angle(p1, self.design_data.init_vertices[1])
-            final_angle1 = init_angle1 + self.design_data.delta_angle
-
-            init_angle2 = self.get_angle(p1, self.design_data.init_vertices[3])
-            final_angle2 = init_angle2 + self.design_data.delta_angle
-
-            line11 = get_line_eq_angle(
-                p1, final_angle1)
-            line12 = get_line_eq_angle(
-                p1, final_angle2)
-
-            line21 = get_line_eq_angle(
-                p3, final_angle2)
-            line22 = get_line_eq_angle(
-                p3, final_angle1)
-
-            p2 = get_intersection(line11, line21)
-            p4 = get_intersection(line12, line22)
-
-        else:
-            p2 = b2Vec2(p3.x, p1.y)
-            p4 = b2Vec2(p1.x, p3.y)
-
-        return [p1, p2, p3, p4]
 
     # transform point in world coordinates to point in pg coordinates
     def __pg_coord(self, point):

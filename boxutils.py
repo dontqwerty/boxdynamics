@@ -57,6 +57,9 @@ def dataclass_to_dict(data):
         dump_db = dict(dump_db)
         return dump_db
 
+def angle_point(angle: float, length: float=1, from_point: b2Vec2=b2Vec2(0, 0)) -> b2Vec2:
+    return from_point + b2Vec2(math.cos(angle), math.sin(angle)) * length
+
 def get_line_eq(point1: b2Vec2, point2: b2Vec2):
     try:
         m = (point1.y - point2.y) / (point1.x - point2.x)
