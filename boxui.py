@@ -110,7 +110,7 @@ class BoxUI():
     def render(self):
         self.screen.fill(boxcolors.BACK)
 
-        self.render_back()
+        # self.render_back()
 
         # title
         text_font = pg.font.SysFont(
@@ -834,6 +834,8 @@ class BoxUI():
         bodies_levels: List[tuple(DesignData, int)
                             ] = self.get_sorted_bodies(design=True)
 
+        yellow_dot_pos = [b2Vec2(-1, -1)]*4
+
         for body, _ in bodies_levels:
             color = self.env.get_data(body.params["type"]).color
             try:
@@ -841,11 +843,18 @@ class BoxUI():
                     self.screen, color, body.vertices)
                 # showing circle on current design
                 if body == self.design_data:
-                    pg.draw.circle(self.screen, boxcolors.YELLOW,
-                                body.points[0], 5)
+                    for vix, v in enumerate(body.vertices):
+                        yellow_dot_pos[vix] = v.copy()
             except TypeError:
                 # wait another cycle for the vertices to be there
                 pass
+
+        for vix, v in enumerate(yellow_dot_pos):
+            pg.draw.line(self.screen, boxcolors.YELLOW, v, yellow_dot_pos[(vix + 1) % len(yellow_dot_pos)])
+            if vix == 0:
+                pg.draw.circle(self.screen, boxcolors.YELLOW, v, 5)
+            else:
+                pg.draw.circle(self.screen, boxcolors.YELLOW, v, 2)
 
         self.render_design_data()
 
