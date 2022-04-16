@@ -16,7 +16,7 @@ from Box2D import b2Body, b2Vec2
 import boxcolors
 from boxdef import (BodyType, DesignData, EffectType, ScreenLayout,
                     UIMode)
-from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle, angle_point
+from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle, get_point_angle
 
 DESIGN_SLEEP = 0.001  # delay in seconds while designing world
 
@@ -84,8 +84,6 @@ class BoxUI():
 
         self.reverse_toggle = False
         self.prev_mouse_pos = None
-        self.zero_angle = 0
-        self.normal = True
 
         # initially empty list of design_data values that the user
         # can save and use using keys from 0 to 9
@@ -468,8 +466,6 @@ class BoxUI():
         elif self.prev_mode == UIMode.ROTATE:
             self.design_data.rotated = False
 
-            # self.design_data.angle = self.get_angle(self.design_data.points[0], self.design_data.points[1]) - math.atan(self.design_data.height / self.design_data.width)
-
     def first_exists(self):
         return self.design_data.points[0] is not None
     
@@ -512,52 +508,113 @@ class BoxUI():
         self.design_data = self.design_bodies[design_ix]
 
     def update_design(self):
+        def get_primary_vertex():
+            return get_point_angle(self.design_data.angle, self.design_data.width, self.design_data.points[0])
+
+        def get_secondary_vertex():
+            delta_angle = math.pi / 2
+            return get_point_angle(self.design_data.angle + delta_angle, self.design_data.height, self.design_data.points[0])
+
+        def check():
+            if self.design_data.normal_plane:
+                supposed_p2 = get_primary_vertex()
+                supposed_p4 = get_secondary_vertex()
+            else:
+                supposed_p2 = get_secondary_vertex()
+                supposed_p4 = get_primary_vertex()
+
+            old_p2 = self.design_data.vertices[1]
+            old_p4 = self.design_data.vertices[3]
+            epsilon = 0.1
+            d2 = (old_p2 - supposed_p2).length
+            d4 = (old_p4 - supposed_p4).length
+            # print(supposed_p2, supposed_p4)
+            # print(old_p2, old_p4)
+            # print(d2, d4)
+            if (d2 > epsilon and d4 > epsilon) or (d2 <= epsilon and d4 <= epsilon):
+                return True
+            else:
+                return False
+
         if self.first_exists() and self.second_exists():
             # dummy variables
             p1 = self.design_data.points[0]
             p3 = self.design_data.points[1]
 
-            if all(v is not None for v in self.design_data.vertices):
-                angle2 = self.design_data.angle
-                angle4 = angle2 + (math.pi / 2)
-                supposed_p2 = angle_point(angle2, self.design_data.width, self.design_data.points[0])
-                supposed_p4 = angle_point(angle4, self.design_data.height, self.design_data.points[0])
-
-                epsilon = 0.0001
-                if ((self.design_data.vertices[1] - supposed_p2).length > epsilon and (self.design_data.vertices[3] - supposed_p4).length > epsilon) or \
-                ((self.design_data.vertices[1] - supposed_p2).length <= epsilon and (self.design_data.vertices[3] - supposed_p4).length <= epsilon):
-                    angle1 = self.design_data.angle
-                    angle2 = angle1 + (math.pi / 2)
-                else:
-                    angle2 = self.design_data.angle
-                    angle1 = angle2 + (math.pi / 2)
-                    self.normal = False
-            else:
-                angle1 = self.design_data.angle
-                angle2 = angle1 + (math.pi / 2)
-
             # calculating line equations
             line11 = get_line_eq_angle(
-                p1, angle1)
+                p1, self.design_data.angle)
             line12 = get_line_eq_angle(
-                p1, angle2)
+                p1, self.design_data.angle + (math.pi/2))
             line21 = get_line_eq_angle(
-                p3, angle2)
+                p3, self.design_data.angle + (math.pi/2))
             line22 = get_line_eq_angle(
-                p3, angle1)
+                p3, self.design_data.angle)
 
-            # calculating vertices with lines intersection
-            p2 = get_intersection(line11, line21)
-            p4 = get_intersection(line12, line22)
+            if all(v is not None for v in self.design_data.vertices):
+                if self.mode == UIMode.RESIZE:
+                    if check():
+                        # calculating vertices with lines intersection
+                        p2 = get_intersection(line11, line21)
+                        p4 = get_intersection(line12, line22)
 
-            # calculating dimensions
-            if self.normal:
-                self.design_data.width = (p1 - p2).length
-                self.design_data.height = (p1 - p4).length
+                        # calculating dimensions
+                        self.design_data.width = (p1 - p2).length
+                        self.design_data.height = (p1 - p4).length
+
+                        self.design_data.normal_plane = True
+                        print("normal")
+                    else:
+                        # calculating vertices with lines intersection
+                        p2 = get_intersection(line12, line22)
+                        p4 = get_intersection(line11, line21)
+
+                        # calculating dimensions
+                        self.design_data.width = (p1 - p4).length
+                        self.design_data.height = (p1 - p2).length
+
+                        self.design_data.normal_plane = False
+                        print("abnormal")
+                elif self.design_data.normal_plane:
+                    # calculating vertices with lines intersection
+                    p2 = get_intersection(line11, line21)
+                    p4 = get_intersection(line12, line22)
+
+                    # calculating dimensions
+                    self.design_data.width = (p1 - p2).length
+                    self.design_data.height = (p1 - p4).length
+                else:
+                    # calculating vertices with lines intersection
+                    p2 = get_intersection(line12, line22)
+                    p4 = get_intersection(line11, line21)
+
+                    # calculating dimensions
+                    self.design_data.width = (p1 - p4).length
+                    self.design_data.height = (p1 - p2).length
             else:
-                self.design_data.width = (p1 - p4).length
-                self.design_data.height = (p1 - p2).length
+                # this only runs the first time a bidy is created
+                # and the vertices calculation has never been done
+                # the angle should be zero at this point
+
+                if (p1.x < p3.x and p1.y < p3.y) or (p1.x >= p3.x and p1.y >= p3.y):
+                    # calculating vertices with lines intersection
+                    p2 = get_intersection(line11, line21)
+                    p4 = get_intersection(line12, line22)
+
+                    # calculating dimensions
+                    self.design_data.width = (p1 - p2).length
+                    self.design_data.height = (p1 - p4).length
+                else:
+                    # calculating vertices with lines intersection
+                    p2 = get_intersection(line12, line22)
+                    p4 = get_intersection(line11, line21)
+
+                    # calculating dimensions
+                    self.design_data.width = (p1 - p4).length
+                    self.design_data.height = (p1 - p2).length
+
             self.design_data.vertices = [p1, p2, p3, p4]
+            # print(self.design_data.vertices)
         pass
 
     def resize(self):
@@ -565,9 +622,6 @@ class BoxUI():
         # setting second point
         mouse_pos = b2Vec2(pg.mouse.get_pos())
         self.design_data.points[1] = mouse_pos
-
-        # line1 = get_line_eq_angle(point=self.design_data.points[0], angle=self.design_data.angle)
-        # line2 = get_line_eq_angle(point=self.design_data.points[1], angle=self.design_data.angle + math.pi)
 
     def move(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
@@ -586,18 +640,18 @@ class BoxUI():
     def rotate(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
         if self.design_data.rotated is False:
-            self.zero_angle2 = self.get_angle(self.design_data.points[0], mouse_pos)
-            self.zero_angle = math.atan(self.design_data.height / (self.design_data.width))
-            print(self.zero_angle, self.zero_angle2)
+            if self.design_data.normal_plane:
+                self.design_data.zero_angle = -math.atan(self.design_data.height / (self.design_data.width))
+            else:
+                self.design_data.zero_angle = math.atan(self.design_data.height / (self.design_data.width))
+            print("{}".format(self.design_data.zero_angle * 180/math.pi))
             self.design_data.rotated = True
         else:
             diagonal = (self.design_data.points[1] - self.design_data.points[0]).length
             diagonal_angle = self.get_angle(self.design_data.points[0], mouse_pos)
-            self.design_data.angle = diagonal_angle - self.zero_angle
+            self.design_data.angle = diagonal_angle + self.design_data.zero_angle
 
             self.design_data.points[1] = self.design_data.points[0] + b2Vec2(math.cos(diagonal_angle), math.sin(diagonal_angle)) * diagonal
-
-        # print(self.design_data.angle)
 
     def toggle_param(self):
         if self.reverse_toggle == False:
@@ -647,7 +701,10 @@ class BoxUI():
             self.design_data.params["type"]).color
 
     def save_design(self, filename):
-        dump_db = [dataclass_to_dict(body) for body in self.design_bodies]
+        dump_db = list()
+        for body in self.design_bodies:
+            if body.valid:
+                dump_db.append(dataclass_to_dict(body))
         try:
             with open(filename, "w") as f:
                 json.dump(dump_db, f)

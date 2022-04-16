@@ -44,7 +44,7 @@ def dataclass_to_dict(data):
                     elif isinstance(sub_value, dict):
                         dump_db[-1][1].append(sub_value.copy())
                     else:
-                        logging.error("Unexpected type in dataclass".format(name, type(sub_value)))
+                        logging.error("Unexpected type in dataclass {} {}".format(name, type(sub_value)))
                         assert False
             elif isinstance(value, b2Vec2):
                 debug("b2Vec2 {} : {}".format(name, value))
@@ -57,7 +57,7 @@ def dataclass_to_dict(data):
         dump_db = dict(dump_db)
         return dump_db
 
-def angle_point(angle: float, length: float=1, from_point: b2Vec2=b2Vec2(0, 0)) -> b2Vec2:
+def get_point_angle(angle: float, length: float=1, from_point: b2Vec2=b2Vec2(0, 0)) -> b2Vec2:
     return from_point + b2Vec2(math.cos(angle), math.sin(angle)) * length
 
 def get_line_eq(point1: b2Vec2, point2: b2Vec2):

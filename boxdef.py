@@ -63,8 +63,9 @@ class DesignData:
     vertices: List[b2Vec2] = field(default_factory=list)
     width: float = 0.0
     height: float = 0.0
+    normal_plane: bool = True # for rotation after inverse resize
+    zero_angle: float = 0.0
     angle: float = 0.0
-    delta_angle: float = 0.0
     moved: bool = False
     rotated: bool = False
 
