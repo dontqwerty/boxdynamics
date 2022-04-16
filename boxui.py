@@ -515,7 +515,7 @@ class BoxUI():
             delta_angle = math.pi / 2
             return get_point_angle(self.design_data.angle + delta_angle, self.design_data.height, self.design_data.points[0])
 
-        def check():
+        def normal_plane_check():
             if self.design_data.normal_plane:
                 supposed_p2 = get_primary_vertex()
                 supposed_p4 = get_secondary_vertex()
@@ -553,7 +553,8 @@ class BoxUI():
 
             if all(v is not None for v in self.design_data.vertices):
                 if self.mode == UIMode.RESIZE:
-                    if check():
+                    if normal_plane_check():
+                        logging.debug("Resizing in normal plane")
                         # calculating vertices with lines intersection
                         p2 = get_intersection(line11, line21)
                         p4 = get_intersection(line12, line22)
@@ -563,8 +564,8 @@ class BoxUI():
                         self.design_data.height = (p1 - p4).length
 
                         self.design_data.normal_plane = True
-                        print("normal")
                     else:
+                        logging.debug("Resizing in abnormal plane")
                         # calculating vertices with lines intersection
                         p2 = get_intersection(line12, line22)
                         p4 = get_intersection(line11, line21)
@@ -574,8 +575,8 @@ class BoxUI():
                         self.design_data.height = (p1 - p2).length
 
                         self.design_data.normal_plane = False
-                        print("abnormal")
                 elif self.design_data.normal_plane:
+                    logging.debug("Setting vertices in normal plane")
                     # calculating vertices with lines intersection
                     p2 = get_intersection(line11, line21)
                     p4 = get_intersection(line12, line22)
@@ -584,6 +585,7 @@ class BoxUI():
                     self.design_data.width = (p1 - p2).length
                     self.design_data.height = (p1 - p4).length
                 else:
+                    logging.debug("Setting vertices in abnormal plane")
                     # calculating vertices with lines intersection
                     p2 = get_intersection(line12, line22)
                     p4 = get_intersection(line11, line21)
@@ -595,7 +597,7 @@ class BoxUI():
                 # this only runs the first time a bidy is created
                 # and the vertices calculation has never been done
                 # the angle should be zero at this point
-
+                logging.debug("Setting vertices for the first time")
                 if (p1.x < p3.x and p1.y < p3.y) or (p1.x >= p3.x and p1.y >= p3.y):
                     # calculating vertices with lines intersection
                     p2 = get_intersection(line11, line21)

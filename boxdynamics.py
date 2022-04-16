@@ -297,17 +297,11 @@ class BoxEnv(gym.Env):
         # creates all the bodies in the enviroment configuration
         if isinstance(self.cfg.design_bodies, list):
             for design in self.cfg.design_bodies:
-                logging.debug("Creating object from design {}".format(design))
-                self.create_body(design)
-
-        # body: b2Body = self.world.CreateDynamicBody(
-        #     position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0, bullet=False)
-        # _: b2Fixture = body.CreatePolygonFixture(
-        #     box=size, density=1)
-
-        # body: b2Body = self.world.CreateKinematicBody(position=b2Vec2(20, 80), angle=0, linearVelocity=b2Vec2(0, -10), angularVelocity=0, bullet=False)
-        # _: b2Fixture = body.CreatePolygonFixture(box=b2Vec2(10,10), density=1)
-        # body.userData = self.get_moving_obstacle_data()
+                if design.valid:
+                    logging.debug("Creating object from design")
+                    self.create_body(design)
+                else:
+                    logging.debug("Invalud object from design")
 
     def create_body(self, design_data: DesignData):
         points = [self.world_coord(b2Vec2(point))
