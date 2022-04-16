@@ -220,10 +220,10 @@ class BoxUI():
         design_data = DesignData(**design_data)
         return design_data
 
-    def copy_design_bodies(self):
+    def copy_design_bodies(self, design_bodies):
         design_copy = list()
 
-        for body in self.design_bodies:
+        for body in design_bodies:
             if body.valid:
                 design_copy.append(self.copy_design_data(design=body))
 
@@ -528,9 +528,6 @@ class BoxUI():
             epsilon = 0.1
             d2 = (old_p2 - supposed_p2).length
             d4 = (old_p4 - supposed_p4).length
-            # print(supposed_p2, supposed_p4)
-            # print(old_p2, old_p4)
-            # print(d2, d4)
             if (d2 > epsilon and d4 > epsilon) or (d2 <= epsilon and d4 <= epsilon):
                 return True
             else:
@@ -554,7 +551,7 @@ class BoxUI():
             if all(v is not None for v in self.design_data.vertices):
                 if self.mode == UIMode.RESIZE:
                     if normal_plane_check():
-                        logging.debug("Resizing in normal plane")
+                        # logging.debug("Resizing in normal plane")
                         # calculating vertices with lines intersection
                         p2 = get_intersection(line11, line21)
                         p4 = get_intersection(line12, line22)
@@ -565,7 +562,7 @@ class BoxUI():
 
                         self.design_data.normal_plane = True
                     else:
-                        logging.debug("Resizing in abnormal plane")
+                        # logging.debug("Resizing in abnormal plane")
                         # calculating vertices with lines intersection
                         p2 = get_intersection(line12, line22)
                         p4 = get_intersection(line11, line21)
@@ -576,7 +573,7 @@ class BoxUI():
 
                         self.design_data.normal_plane = False
                 elif self.design_data.normal_plane:
-                    logging.debug("Setting vertices in normal plane")
+                    # logging.debug("Setting vertices in normal plane")
                     # calculating vertices with lines intersection
                     p2 = get_intersection(line11, line21)
                     p4 = get_intersection(line12, line22)
@@ -616,7 +613,6 @@ class BoxUI():
                     self.design_data.height = (p1 - p2).length
 
             self.design_data.vertices = [p1, p2, p3, p4]
-            # print(self.design_data.vertices)
         pass
 
     def resize(self):
@@ -646,7 +642,6 @@ class BoxUI():
                 self.design_data.zero_angle = -math.atan(self.design_data.height / (self.design_data.width))
             else:
                 self.design_data.zero_angle = math.atan(self.design_data.height / (self.design_data.width))
-            print("{}".format(self.design_data.zero_angle * 180/math.pi))
             self.design_data.rotated = True
         else:
             diagonal = (self.design_data.points[1] - self.design_data.points[0]).length

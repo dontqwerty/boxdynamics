@@ -230,6 +230,8 @@ class BoxEnv(gym.Env):
             # Example: points which is a list of b2Vec2, here is just
             # a list of 2-elements lists
             self.cfg.design_bodies[bix] = DesignData(**body)
+            self.cfg.design_bodies[bix].points = [b2Vec2(p) for p in self.cfg.design_bodies[bix].points]
+            self.cfg.design_bodies[bix].vertices = [b2Vec2(p) for p in self.cfg.design_bodies[bix].vertices]
 
         # screen layout
         self.cfg.screen = ScreenLayout(**self.cfg.screen)
@@ -245,7 +247,6 @@ class BoxEnv(gym.Env):
         # agent
         self.cfg.agent = AgentCfg(**self.cfg.agent)
 
-        self.create_bodies()
         logging.info("Config file loaded correctly")
         pass
 
@@ -284,13 +285,17 @@ class BoxEnv(gym.Env):
     # when finished it copies the created world
     # inside the self.cfg.design
     def world_design(self):
+        for design in self.ui.copy_design_bodies(self.cfg.design_bodies):
+            self.ui.design_bodies.append(design)
+
         self.ui.set_mode(UIMode.RESIZE)
         while self.ui.mode != UIMode.SIMULATION:
             self.ui.user_input()
             self.ui.ui_sleep()
             self.render()
 
-        self.cfg.design_bodies = self.ui.copy_design_bodies()
+        self.cfg.design_bodies = self.ui.copy_design_bodies(self.ui.design_bodies)
+
         self.create_bodies()
 
     def create_bodies(self):
