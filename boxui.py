@@ -141,7 +141,7 @@ class BoxUI():
                 self.render_input()
 
         # TODO: render commands
-        # self.render_commands()
+        self.render_commands()
 
         if self.mode == UIMode.QUIT_CONFIRMATION:
             self.render_confirmation("QUIT")
@@ -943,7 +943,7 @@ class BoxUI():
             if ix == self.design_data.params_ix:
                 # highlight current param
                 text_surface = text_font.render(
-                    s, True, boxcolors.BLACK, boxcolors.GREEN)
+                    "* {}".format(s), True, boxcolors.BLACK, boxcolors.GREEN)
             else:
                 text_surface = text_font.render(
                     s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
@@ -952,13 +952,11 @@ class BoxUI():
         self.board_y_shift = pos.y
 
     def render_commands(self):
-        pos = b2Vec2(0, self.board_y_shift + self.layout.border)
-
         text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
 
         # title
-        pos += b2Vec2(self.layout.border, self.layout.border)
+        pos = b2Vec2(self.layout.border, self.board_y_shift + (2*self.layout.border))
         text_surface = text_font.render(
             "COMMANDS", True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.screen.blit(text_surface, pos)
@@ -978,32 +976,27 @@ class BoxUI():
 
     def set_commands(self):
         self.commands.clear()
-        if self.mode == UIMode.RESIZE:
-            self.commands = [{"key": "mouse click", "description": "fix point"},
-                             {"key": "R", "description": "rectangle"},
-                             {"key": "C", "description": "circle"},
-                             {"key": "T", "description": "type"},
+        # TODO: shift commands
+        if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+            self.commands = [{"key": "left click", "description": "fix point"},
+                             {"key": "right click", "description": "toggle body"},
+                             {"key": "A", "description": "rotate"},
+                             {"key": "M", "description": "move"},
                              {"key": "U", "description": "use"},
                              {"key": "S", "description": "save"},
                              {"key": "L", "description": "load"},
                              {"key": "SPACE", "description": "toggle parameter"},
-                             {"key": "UP", "description": "increase parameter"},
-                             {"key": "DOWN", "description": "decrease parameter"},
+                             {"key": "(roll) UP", "description": "increase parameter"},
+                             {"key": "(roll) DOWN", "description": "decrease parameter"},
                              {"key": "RIGHT", "description": "increase parameter inc"},
                              {"key": "LEFT", "description": "decrease parameter inc"},
-                             {"key": "A", "description": "rotate"}]
-        elif self.mode == UIMode.ROTATE:
-            self.commands = [{"key": "A", "description": "finish rotating"},
-                             {"key": "mouse movement", "description": "rotate"},
-                             {"key": "mouse click", "description": "fix point"}]
+                             {"key": "DEL", "description": "delete object"},
+                             {"key": "ESC", "description": "exit"}]
+        elif self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE, UIMode.QUIT_CONFIRMATION, UIMode.USE_CONFIRMATION):
+            self.commands = [{"key": "ENTER", "description": "go"},
+                             {"key": "ESC", "description": "cancel"}]
         elif self.mode == UIMode.SIMULATION:
             self.commands = [{"key": "M", "description": "manual"}]
-
-        if self.mode not in (UIMode.SIMULATION, UIMode.NONE):
-            self.commands.append(
-                {"key": "DEL", "description": "delete object"})
-
-        self.commands.append({"key": "ESC", "description": "exit"})
 
     def render_action(self):
         p1 = self.__pg_coord(self.env.agent_head)
