@@ -11,11 +11,13 @@ import boxcolors
 class BodyType(IntEnum):
     AGENT = 0
     STATIC_OBSTACLE = 1
-    MOVING_OBSTACLE = 2
-    STATIC_ZONE = 3
-    MOVING_ZONE = 4
-    BORDER = 5
-    DEFAULT = 6
+    DYNAMIC_OBSTACLE = 2
+    KINEMATIC_OBSTACLE = 3
+    STATIC_ZONE = 4
+    DYNAMIC_ZONE = 5
+    KINEMATIC_ZONE = 6
+    BORDER = 7
+    DEFAULT = 8
 
 
 class EffectType(IntEnum):

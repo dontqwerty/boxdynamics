@@ -332,14 +332,22 @@ class BoxEnv(gym.Env):
             pass
         elif type == BodyType.STATIC_OBSTACLE:
             body = self.create_static_obstacle(pos, size, angle=angle)
-        elif type == BodyType.MOVING_OBSTACLE:
-            body = self.create_moving_obstacle(pos, size, angle=angle)
+        elif type == BodyType.DYNAMIC_OBSTACLE:
+            body = self.create_dynamic_obstacle(pos, size, angle=angle)
+            self.set_body_params(body, design_data)
+        elif type == BodyType.KINEMATIC_OBSTACLE:
+            body = self.create_kinematic_obstacle(pos, size, angle=angle)
             self.set_body_params(body, design_data)
         elif type == BodyType.STATIC_ZONE:
             body = self.create_static_zone(pos, size, angle=angle)
-        elif type == BodyType.MOVING_ZONE:
-            body = self.create_moving_zone(pos, size, angle=angle)
+        elif type == BodyType.DYNAMIC_ZONE:
+            body = self.create_dynamic_zone(pos, size, angle=angle)
             self.set_body_params(body, design_data)
+        elif type == BodyType.KINEMATIC_OBSTACLE:
+            body = self.create_kinematic_zone(pos, size, angle=angle)
+            self.set_body_params(body, design_data)
+        else:
+            assert False and "Unknown body type"
 
         body.userData.reward = design_data.params["reward"]
         body.userData.level = design_data.params["level"]
@@ -434,14 +442,23 @@ class BoxEnv(gym.Env):
         body.userData = self.get_static_obstacle_data()
         return body
 
-    def create_moving_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
+    def create_dynamic_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
         body: b2Body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False, )
         _: b2Fixture = body.CreatePolygonFixture(
             box=size, density=1)
 
-        body.userData = self.get_moving_obstacle_data()
+        body.userData = self.get_dynamic_obstacle_data()
+        return body
+
+    def create_kinematic_obstacle(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
+        body: b2Body = self.world.CreateKinematicBody(
+            position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0)
+        _: b2Fixture = body.CreatePolygonFixture(
+            box=size)
+
+        body.userData = self.get_kinematic_obstacle_data()
         return body
 
     def create_static_zone(self, pos, size, angle=0):
@@ -454,7 +471,7 @@ class BoxEnv(gym.Env):
         body.userData = self.get_static_zone_data()
         return body
 
-    def create_moving_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
+    def create_dynamic_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
         body: b2Body = self.world.CreateDynamicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0,
             bullet=False)
@@ -463,7 +480,18 @@ class BoxEnv(gym.Env):
 
         fixture.sensor = True
 
-        body.userData = self.get_moving_zone_data()
+        body.userData = self.get_dynamic_zone_data()
+        return body
+    
+    def create_kinematic_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
+        body: b2Body = self.world.CreateKinematicBody(
+            position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0)
+        fixture: b2Fixture = body.CreatePolygonFixture(
+            box=size)
+
+        fixture.sensor = True
+
+        body.userData = self.get_kinematic_zone_data()
         return body
 
     def set_body_params(self, body: b2Body, design_data: DesignData):
@@ -616,12 +644,16 @@ class BoxEnv(gym.Env):
             return self.get_agent_data()
         elif type == BodyType.STATIC_OBSTACLE:
             return self.get_static_obstacle_data()
-        elif type == BodyType.MOVING_OBSTACLE:
-            return self.get_moving_obstacle_data()
+        elif type == BodyType.DYNAMIC_OBSTACLE:
+            return self.get_dynamic_obstacle_data()
+        elif type == BodyType.KINEMATIC_OBSTACLE:
+            return self.get_kinematic_obstacle_data()
         elif type == BodyType.STATIC_ZONE:
             return self.get_static_zone_data()
-        elif type == BodyType.MOVING_ZONE:
-            return self.get_moving_zone_data()
+        elif type == BodyType.DYNAMIC_ZONE:
+            return self.get_dynamic_zone_data()
+        elif type == BodyType.KINEMATIC_ZONE:
+            return self.get_kinematic_zone_data()
         else:
             # TODO: explain
             assert False
@@ -637,17 +669,25 @@ class BoxEnv(gym.Env):
     def get_static_obstacle_data(self) -> BodyData:
         return BodyData(type=BodyType.STATIC_OBSTACLE, color=color.STATIC_OBSTACLE)
 
-    def get_moving_obstacle_data(self) -> BodyData:
+    def get_dynamic_obstacle_data(self) -> BodyData:
         return BodyData(
-            type=BodyType.MOVING_OBSTACLE, color=color.MOVING_OBSTACLE)
+            type=BodyType.DYNAMIC_OBSTACLE, color=color.DYNAMIC_OBSTACLE)
+
+    def get_kinematic_obstacle_data(self) -> BodyData:
+        return BodyData(
+            type=BodyType.KINEMATIC_OBSTACLE, color=color.KINEMATIC_OBSTACLE)
 
     def get_static_zone_data(self) -> BodyData:
         return BodyData(
             type=BodyType.STATIC_ZONE, color=color.STATIC_ZONE)
 
-    def get_moving_zone_data(self) -> BodyData:
+    def get_dynamic_zone_data(self) -> BodyData:
         return BodyData(
-            type=BodyType.MOVING_ZONE, color=color.MOVING_ZONE)
+            type=BodyType.DYNAMIC_ZONE, color=color.DYNAMIC_ZONE)
+
+    def get_kinematic_zone_data(self) -> BodyData:
+        return BodyData(
+            type=BodyType.KINEMATIC_ZONE, color=color.KINEMATIC_ZONE)
 
     # user functions
     def get_world_size(self) -> tuple:

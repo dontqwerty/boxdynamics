@@ -130,6 +130,8 @@ dmypy.json
 
 # Custom
 test.py
+music_test.py
 Box2D-body-and-fixture.txt
 boxuitest.py
 *.json
+*.mp3

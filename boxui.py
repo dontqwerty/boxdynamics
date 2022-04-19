@@ -117,7 +117,7 @@ class BoxUI():
         s = "Mode {}".format(self.mode.name)
         text_surface = text_font.render(
             s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
-        self.board_y_shift += text_surface.get_height()
+        self.board_y_shift = text_surface.get_height()
         pos = b2Vec2(self.layout.border, self.layout.border)
         self.screen.blit(text_surface, pos) # TODO: blit only once
 
@@ -149,7 +149,6 @@ class BoxUI():
             self.render_confirmation("USE")
         pg.display.flip()
         self.clock.tick(self.target_fps)
-        self.board_y_shift = 0
         pass
 
     def render_popup(self):
@@ -265,8 +264,7 @@ class BoxUI():
             design_data.params = self.design_data.params.copy()
             design_data.effect = self.design_data.effect.copy()
         elif set_type == SetType.RANDOM:
-            types = [BodyType.STATIC_OBSTACLE, BodyType.MOVING_OBSTACLE,
-                     BodyType.STATIC_ZONE, BodyType.MOVING_ZONE]
+            types = list(BodyType)
             design_data.params = {"type": random.choice(types),
                                   "reward": random.uniform(-1, 1),
                                   "level": 0,
@@ -662,8 +660,10 @@ class BoxUI():
             inc = -1
         if self.design_data.dicts[self.design_data.dict_ix] == self.design_data.params:
             # we are toggling design params
-            if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
-                    self.design_data.params["type"] == BodyType.MOVING_ZONE:
+            if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
+                                                BodyType.DYNAMIC_ZONE,
+                                                BodyType.KINEMATIC_OBSTACLE,
+                                                BodyType.KINEMATIC_ZONE):
                 self.design_data.params_ix = (
                     self.design_data.params_ix + inc) % len(list(self.design_data.params))
             else:
@@ -914,8 +914,10 @@ class BoxUI():
         params.append("Level: {}".format(
             round(self.design_data.params["level"])))
 
-        if self.design_data.params["type"] == BodyType.MOVING_OBSTACLE or \
-                self.design_data.params["type"] == BodyType.MOVING_ZONE:
+        if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
+                                                BodyType.DYNAMIC_ZONE,
+                                                BodyType.KINEMATIC_OBSTACLE,
+                                                BodyType.KINEMATIC_ZONE):
             params.append("Velocity: {}".format(
                 round(self.design_data.params["lin_velocity"], 3)))
             params.append("Velocity angle: {}".format(
@@ -947,6 +949,8 @@ class BoxUI():
                     s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
+        self.board_y_shift = pos.y
+
     def render_commands(self):
         pos = b2Vec2(0, self.board_y_shift + self.layout.border)
 
@@ -969,6 +973,8 @@ class BoxUI():
             text_surface = text_font.render(
                 s, True, boxcolors.BACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
+        
+        self.board_y_shift = pos.y
 
     def set_commands(self):
         self.commands.clear()
