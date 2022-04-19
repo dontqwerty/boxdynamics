@@ -82,7 +82,7 @@ class BoxUI():
         # design_bodies index when selecting
         self.design_body_ix = 0
 
-        self.reverse_toggle = False
+        self.shift_pressed = False
         self.prev_mouse_pos = None
 
         # initially empty list of design_data values that the user
@@ -110,7 +110,7 @@ class BoxUI():
     def render(self):
         self.screen.fill(boxcolors.BACK)
 
-        # self.render_back()
+        self.render_back()
 
         # title
         text_font = pg.font.SysFont(
@@ -331,16 +331,21 @@ class BoxUI():
 
                 elif event.key == pg.K_DELETE:
                     # abort current changes to body
-                    # TODO: ask for confirmation (?)
-                    try:
-                        self.design_bodies.remove(self.design_data)
-                    except IndexError:
-                        logging.debug("Can't remove design")
+                    if self.shift_pressed:
+                        # TODO: ask for confirmation
+                        # remove all designs
+                        self.design_bodies.clear()
                         pass
+                    else:
+                        try:
+                            self.design_bodies.remove(self.design_data)
+                        except IndexError:
+                            logging.debug("Can't remove design")
+                            pass
                     self.new_design()
                     self.set_mode(UIMode.RESIZE)
                 elif event.key == pg.K_LSHIFT:
-                    self.reverse_toggle = True
+                    self.shift_pressed = True
                     pass
                 elif event.key == pg.K_s:
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
@@ -412,7 +417,7 @@ class BoxUI():
                     pass
             elif event.type == pg.KEYUP:
                 if event.key == pg.K_LSHIFT:
-                    self.reverse_toggle = False
+                    self.shift_pressed = False
                 pass
             # pg mouse buttons
             # 2 - middle click
@@ -474,7 +479,7 @@ class BoxUI():
 
     def toggle_design_body(self):
         if len(self.design_bodies):
-            if self.reverse_toggle == False:
+            if self.shift_pressed == False:
                 inc = 1
             else:
                 inc = -1
@@ -651,7 +656,7 @@ class BoxUI():
             self.design_data.points[1] = self.design_data.points[0] + b2Vec2(math.cos(diagonal_angle), math.sin(diagonal_angle)) * diagonal
 
     def toggle_param(self):
-        if self.reverse_toggle == False:
+        if self.shift_pressed == False:
             inc = 1
         else:
             inc = -1
