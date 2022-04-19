@@ -35,7 +35,7 @@ class BoxUI():
         self.target_fps = target_fps
 
         # only setting mode this way here
-        # use set_mode everywhere else
+        # use set_mode() everywhere else
         self.mode = mode
         self.prev_mode = UIMode.NONE
 
@@ -44,36 +44,31 @@ class BoxUI():
         # setting up design variables
         self.design_data = self.get_design_data(set_type=SetType.DEFAULT)
         self.design_bodies.append(self.design_data)
+        # TODO: include in config
         # self.set_type = SetType.DEFAULT
         self.set_type = SetType.PREVIOUS
         # self.set_type = SetType.RANDOM
 
-        # pg setup
+        # pygame setup
         pg.init()
+        pg.font.init()  # to render text
         if self.layout.size == b2Vec2(0, 0): # fullscreen
             info = pg.display.Info()
             self.screen = pg.display.set_mode((info.current_w, info.current_h), pg.DOUBLEBUF | pg.FULLSCREEN, 32)
         else:
             self.screen = pg.display.set_mode(
-                (self.layout.width, self.layout.height), 0, 32)
+                (self.layout.width, self.layout.height), pg.DOUBLEBUF, 32)
 
+        # window title
         pg.display.set_caption('Box Dynamics')
         self.clock = pg.time.Clock()
-        pg.font.init()  # to render text
-
-        self.commands = list()
 
         # font
         self.font = 'Comic Sans MS'
 
-        # border when drawing rectangles that contain text
-        self.border_width = 10
-
         # will be updated on runtime based on the real dimensions
         # once the text is rendered
-        self.title_surface_height = 0
-        self.commands_surface_height = 0
-        self.design_surface_height = 0
+        self.board_y_shift = 0
         self.popup_msg_size = b2Vec2(0, 0)
 
         # input text from user
@@ -82,11 +77,15 @@ class BoxUI():
         # design_bodies index when selecting
         self.design_body_ix = 0
 
+        # help variables
         self.shift_pressed = False
         self.prev_mouse_pos = None
 
+        self.commands = list()
+
         # initially empty list of design_data values that the user
         # can save and use using keys from 0 to 9
+        # TODO: implement
         self.saved_designs: List[DesignData] = [None]*10
 
         logging.info("BoxUI created")
@@ -118,12 +117,10 @@ class BoxUI():
         s = "Mode {}".format(self.mode.name)
         text_surface = text_font.render(
             s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
-        self.title_surface_height = text_surface.get_height()
-        pos = b2Vec2(self.border_width, self.border_width / 2)
-        self.screen.blit(text_surface, pos)
+        self.board_y_shift += text_surface.get_height()
+        pos = b2Vec2(self.layout.border, self.layout.border)
+        self.screen.blit(text_surface, pos) # TODO: blit only once
 
-        # TODO: render commands
-        # self.render_commands()
 
         # TODO: fix that when designing and quit confirmation is asked
         # the observation vectors of the agente can be seen
@@ -131,7 +128,6 @@ class BoxUI():
         if self.mode == UIMode.SIMULATION or (self.prev_mode == UIMode.SIMULATION and self.mode == UIMode.QUIT_CONFIRMATION):
             self.render_action()
             self.render_observations()
-            self.draw_distances()
         if self.mode in (UIMode.RESIZE,
                          UIMode.MOVE,
                          UIMode.ROTATE,
@@ -144,12 +140,16 @@ class BoxUI():
             if self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE):
                 self.render_input()
 
+        # TODO: render commands
+        # self.render_commands()
+
         if self.mode == UIMode.QUIT_CONFIRMATION:
             self.render_confirmation("QUIT")
         elif self.mode == UIMode.USE_CONFIRMATION:
             self.render_confirmation("USE")
         pg.display.flip()
         self.clock.tick(self.target_fps)
+        self.board_y_shift = 0
         pass
 
     def render_popup(self):
@@ -783,9 +783,9 @@ class BoxUI():
 
     def render_world(self):
         # Draw the world based on bodies levels
-        bodies_levels: List[tuple(b2Body, int)] = self.get_sorted_bodies()
+        sorted_bodies: List[b2Body] = self.get_sorted_bodies(design=False)
 
-        for body, _ in bodies_levels:
+        for body in sorted_bodies:
             # skipping border rendering cause not necessary
             if body.userData.type == BodyType.BORDER:
                 continue
@@ -836,12 +836,11 @@ class BoxUI():
 
     def render_design(self):
         # Draw the world based on bodies levels
-        bodies_levels: List[tuple(DesignData, int)
-                            ] = self.get_sorted_bodies(design=True)
+        sorted_bodies: List[DesignData] = self.get_sorted_bodies(design=True)
 
-        yellow_dot_pos = [b2Vec2(-1, -1)]*4
+        body_vertices = [b2Vec2(-1, -1)]*4
 
-        for body, _ in bodies_levels:
+        for body in sorted_bodies:
             color = self.env.get_data(body.params["type"]).color
             try:
                 pg.draw.polygon(
@@ -849,17 +848,17 @@ class BoxUI():
                 # showing circle on current design
                 if body == self.design_data:
                     for vix, v in enumerate(body.vertices):
-                        yellow_dot_pos[vix] = v.copy()
+                        body_vertices[vix] = v.copy()
             except TypeError:
                 # wait another cycle for the vertices to be there
                 pass
 
-        for vix, v in enumerate(yellow_dot_pos):
-            pg.draw.line(self.screen, boxcolors.YELLOW, v, yellow_dot_pos[(vix + 1) % len(yellow_dot_pos)])
+        for vix, v in enumerate(body_vertices):
+            pg.draw.line(self.screen, boxcolors.YELLOW, v, body_vertices[(vix + 1) % len(body_vertices)])
             if vix == 0:
-                pg.draw.circle(self.screen, boxcolors.YELLOW, v, 5)
+                pg.draw.circle(self.screen, boxcolors.YELLOW, v, self.layout.big_dot_radius)
             else:
-                pg.draw.circle(self.screen, boxcolors.YELLOW, v, 2)
+                pg.draw.circle(self.screen, boxcolors.YELLOW, v, self.layout.small_dot_radius)
 
         self.render_design_data()
 
@@ -874,26 +873,16 @@ class BoxUI():
                              for b in self.env.world.bodies]
             bodies_levels.sort(key=lambda x: x[1], reverse=False)
 
-        return bodies_levels
+        return [body[0] for body in bodies_levels]
 
     def render_design_data(self):
         # rendering design data when user is designin shape
         text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
 
-        design_pos = b2Vec2(
-            0, self.border_width * 3)
-        pos = design_pos.copy()
-        pos = b2Vec2(self.border_width, self.title_surface_height + self.border_width)
-
-        # pg.draw.rect(self.screen, boxcolors.BLACK,
-        #              pg.Rect(pos.x - self.border_width,
-        #                      pos.y,
-        #                      self.layout.simulation_xshift + self.border_width * 2,
-        #                      self.design_surface_height), width=self.border_width)
+        pos = b2Vec2(self.layout.border, self.board_y_shift + self.layout.border)
 
         # title
-        # pos += b2Vec2(self.border_width, self.border_width)
         s = "DESIGN DATA"
         text_surface = text_font.render(
             s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
@@ -902,7 +891,7 @@ class BoxUI():
         text_font = pg.font.SysFont(
             self.font, self.layout.normal_font)
 
-        # can't be toggled like params
+        # data can't be toggled like params
         data = ["Angle: {}".format(
                     round(-360 * self.design_data.angle / (2 * math.pi), 3))]
 
@@ -944,32 +933,28 @@ class BoxUI():
             params.append("Angular damping: {}".format(
                 round(self.design_data.params["ang_damping"], 3)))
 
+        # increment always as last parameter
         params.append("Increment: {}".format((self.design_data.float_inc)))
 
         for ix, s in enumerate(params):
             pos += b2Vec2(0, text_surface.get_height())
             if ix == self.design_data.params_ix:
+                # highlight current param
                 text_surface = text_font.render(
                     s, True, boxcolors.BLACK, boxcolors.GREEN)
             else:
                 text_surface = text_font.render(
                     s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
-        self.design_surface_height = pos.y - design_pos.y + self.border_width * 3
 
     def render_commands(self):
-        pos = b2Vec2(0, self.title_surface_height + self.border_width)
-        # pg.draw.rect(self.screen, boxcolors.BLACK,
-        #              pg.Rect(pos.x - self.border_width,
-        #                      pos.y,
-        #                      self.layout.simulation_xshift + self.border_width * 2,
-        #                      self.commands_surface_height), width=self.border_width)
+        pos = b2Vec2(0, self.board_y_shift + self.layout.border)
 
         text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
 
         # title
-        pos += b2Vec2(self.border_width, self.border_width)
+        pos += b2Vec2(self.layout.border, self.layout.border)
         text_surface = text_font.render(
             "COMMANDS", True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.screen.blit(text_surface, pos)
@@ -984,8 +969,6 @@ class BoxUI():
             text_surface = text_font.render(
                 s, True, boxcolors.BACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
-
-        self.commands_surface_height = pos.y
 
     def set_commands(self):
         self.commands.clear()
@@ -1022,7 +1005,7 @@ class BoxUI():
 
         pg.draw.line(self.screen, boxcolors.ACTION, p1, p2)
 
-    def draw_distances(self):
+    def render_distances(self):
         text_font = pg.font.SysFont(
             self.font, self.layout.small_font)
 
@@ -1050,7 +1033,10 @@ class BoxUI():
                              start_point, end_point)
                 # drawing intersection points
                 pg.draw.circle(
-                    self.screen, boxcolors.INTERSECTION, end_point, 3)
+                    self.screen, boxcolors.INTERSECTION, end_point, self.layout.normal_dot_radius)
+        # drawing text distances
+        if self.env.cfg.render_distances:
+            self.render_distances()
 
     # transform point in world coordinates to point in pg coordinates
     def __pg_coord(self, point):

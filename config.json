@@ -5,12 +5,23 @@
     "screen": {
         "width": 1000,
         "height": 800,
+        "simulation_xshift": 250.0,
+        "simulation_yshift": 0,
+        "border": 10,
+        "popup_size": [
+            150.0,
+            60.0
+        ],
+        "big_dot_radius": 5,
+        "normal_dot_radius": 3,
+        "small_dot_radius": 2,
+        "small_font": 14,
+        "normal_font": 20,
+        "big_font": 32,
         "size": [
             1000.0,
             800.0
         ],
-        "simulation_xshift": 250.0,
-        "simulation_yshift": 0,
         "simulation_pos": [
             250.0,
             0.0
@@ -23,21 +34,10 @@
             0.0,
             800.0
         ],
-        "board_size": [
-            0.0,
-            0.0
-        ],
-        "popup_size": [
-            150.0,
-            60.0
-        ],
         "popup_pos": [
             462.5,
             385.0
-        ],
-        "small_font": 14,
-        "normal_font": 20,
-        "big_font": 32
+        ]
     },
     "world_width": 75.0,
     "world_height": 80.0,
@@ -46,6 +46,7 @@
         0.0
     ],
     "create_borders": true,
+    "render_distances": true,
     "borders_width": 10,
     "border_inside": 0,
     "vel_iter": 6,

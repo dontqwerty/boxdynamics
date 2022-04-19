@@ -41,19 +41,22 @@ class UIMode(IntEnum):
 class ScreenLayout:
     width: int = 1000  # pixels
     height: int = 800
-    size: b2Vec2 = b2Vec2(width, height)
     simulation_xshift: int = width / 4
     simulation_yshift: int = 0
+    border: int = 10
+    popup_size: b2Vec2 = b2Vec2(150, 60)
+    big_dot_radius: int = 5
+    normal_dot_radius: int = 3
+    small_dot_radius: int = 2
+    small_font: int = 14
+    normal_font: int = 20
+    big_font: int = 32
+    size: b2Vec2 = b2Vec2(width, height)
     simulation_pos: b2Vec2 = b2Vec2(simulation_xshift, simulation_yshift)
     simulation_size: b2Vec2 = b2Vec2(
         width - simulation_xshift, height - simulation_yshift)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
-    board_size: b2Vec2 = b2Vec2(width, height) * 0
-    popup_size: b2Vec2 = b2Vec2(150, 60)
     popup_pos: b2Vec2 = (b2Vec2(width, height) - popup_size / 2) / 2
-    small_font: int = 14
-    normal_font: int = 20
-    big_font: int = 32
 
 
 @dataclass

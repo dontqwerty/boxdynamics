@@ -74,6 +74,7 @@ class EnvCfg:
 
     # world
     create_borders: bool = True
+    render_distances: bool = True # render text distances for observations
     borders_width: float = 10  # meters
     border_inside: float = 0
 
@@ -112,7 +113,7 @@ class Observation:
 class BoxEnv(gym.Env):
     def __init__(self) -> None:
         logging.basicConfig(
-            format='%(levelname)s: %(asctime)s: %(message)s', level=logging.DEBUG)
+            format='%(levelname)s: %(asctime)s: %(message)s', level=logging.INFO)
 
         # initializing base class
         super(BoxEnv, self).__init__()
@@ -240,7 +241,6 @@ class BoxEnv(gym.Env):
         self.cfg.screen.simulation_size = b2Vec2(
             self.cfg.screen.simulation_size)
         self.cfg.screen.board_pos = b2Vec2(self.cfg.screen.board_pos)
-        self.cfg.screen.board_size = b2Vec2(self.cfg.screen.board_size)
         self.cfg.screen.popup_size = b2Vec2(self.cfg.screen.popup_size)
         self.cfg.screen.popup_pos = b2Vec2(self.cfg.screen.popup_pos)
 
@@ -386,6 +386,7 @@ class BoxEnv(gym.Env):
                 box=(self.cfg.borders_width / 2, self.cfg.world_height / 2 + self.cfg.borders_width)),
             userData=self.get_border_data()
         )
+        logging.info("Created borders")
 
     def create_agent(self):
         agent_width, agent_height = self.cfg.agent.size
