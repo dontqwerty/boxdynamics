@@ -251,7 +251,7 @@ class BoxUI():
 
         # use copiable data types
         if set_type == SetType.DEFAULT:
-            design_data.params = {"type": BodyType.STATIC_OBSTACLE,
+            design_data.physic = {"type": BodyType.STATIC_OBSTACLE,
                                   "reward": 0.0,
                                   "level": 0,
                                   "lin_velocity": 10.0,
@@ -266,17 +266,17 @@ class BoxUI():
         elif set_type == SetType.PREVIOUS:
             # indexes
             design_data.param_group = self.design_data.param_group
-            design_data.params_ix = self.design_data.params_ix
+            design_data.physic_ix = self.design_data.physic_ix
             design_data.effect_ix = self.design_data.effect_ix
 
-            design_data.params = self.design_data.params.copy()
+            design_data.physic = self.design_data.physic.copy()
             design_data.effect = self.design_data.effect.copy()
         elif set_type == SetType.RANDOM:
             types = list(BodyType)
             types.remove(BodyType.AGENT)
             types.remove(BodyType.BORDER)
             types.remove(BodyType.DEFAULT)
-            design_data.params = {"type": random.choice(types),
+            design_data.physic = {"type": random.choice(types),
                                   "reward": random.uniform(-1, 1),
                                   "level": 0,
                                   "lin_velocity": random.uniform(0, 10),
@@ -503,6 +503,15 @@ class BoxUI():
             self.design_data = self.design_bodies[self.design_body_ix]
             # self.design_data.points[1] = b2Vec2(pg.mouse.get_pos())
 
+    def check_design_validity(self, design: DesignData):
+        # TODO: add other checks (?)
+        if all(v is not None for v in design.vertices):
+            # checking for vertices
+            return True
+        else:
+            logging.warning("Invalid design {}".format(design))
+            return False
+
     def set_points(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
         if not self.first_exists():
@@ -512,7 +521,7 @@ class BoxUI():
             # setting second body point and
             # getting ready for new design
             self.design_data.points[1] = mouse_pos
-            self.design_data.valid = True
+            self.design_data.valid = self.check_design_validity(self.design_data)
             # removing design pointer
             self.design_bodies.remove(self.design_data)
             # appending design copy
@@ -682,19 +691,19 @@ class BoxUI():
         else:
             inc = -1
         if self.design_data.param_group == ParamGroup.PHYSIC:
-            # we are toggling design params
-            if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
+            # we are toggling design physic
+            if self.design_data.physic["type"] in (BodyType.DYNAMIC_OBSTACLE,
                                                    BodyType.DYNAMIC_ZONE,
                                                    BodyType.KINEMATIC_OBSTACLE,
                                                    BodyType.KINEMATIC_ZONE):
-                self.design_data.params_ix = (
-                    self.design_data.params_ix + inc) % len(list(self.design_data.params))
+                self.design_data.physic_ix = (
+                    self.design_data.physic_ix + inc) % len(list(self.design_data.physic))
             else:
-                # TODO: only toggle static bodies params not hardcoded
-                self.design_data.params_ix = (
-                    self.design_data.params_ix + inc) % 3
+                # TODO: only toggle static bodies physic not hardcoded
+                self.design_data.physic_ix = (
+                    self.design_data.physic_ix + inc) % 3
         elif self.design_data.param_group == ParamGroup.EFFECT:
-            # we are toggling effect params
+            # we are toggling effect physic
             if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
                                                    EffectType.SET_VELOCITY):
                 # all effect keys needed
@@ -725,19 +734,19 @@ class BoxUI():
     def modify_param(self, increase=True):
         if self.design_data.param_group == ParamGroup.PHYSIC:
             # currently changin parameters
-            name = list(self.design_data.params)[self.design_data.params_ix]
+            name = list(self.design_data.physic)[self.design_data.physic_ix]
             if name == "type":
                 self.toggle_body_type(increase)
             elif name == "level":
                 if increase:
-                    self.design_data.params[name] += 1
+                    self.design_data.physic[name] += 1
                 else:
-                    self.design_data.params[name] -= 1
+                    self.design_data.physic[name] -= 1
             else:
                 if increase:
-                    self.design_data.params[name] += self.design_data.float_inc
+                    self.design_data.physic[name] += self.design_data.float_inc
                 else:
-                    self.design_data.params[name] -= self.design_data.float_inc
+                    self.design_data.physic[name] -= self.design_data.float_inc
         # TODO: could be more than two groups!!
         elif self.design_data.param_group == ParamGroup.EFFECT:
             name = list(self.design_data.effect)[self.design_data.effect_ix]
@@ -752,10 +761,10 @@ class BoxUI():
         pass
 
     def toggle_body_type(self, increase=True):
-        self.design_data.params["type"] = self.toggle_enum(
-            self.design_data.params["type"], skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT], increase=increase)
+        self.design_data.physic["type"] = self.toggle_enum(
+            self.design_data.physic["type"], skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT], increase=increase)
         self.design_data.color = self.env.get_data(
-            self.design_data.params["type"]).color
+            self.design_data.physic["type"]).color
 
     def save_design(self, filename):
         dump_db = list()
@@ -788,7 +797,7 @@ class BoxUI():
             design = DesignData(**body)
             design.points = [b2Vec2(p) for p in design.points]
             design.vertices = [b2Vec2(p) for p in design.vertices]
-            design.params["type"] = BodyType(design.params["type"])
+            design.physic["type"] = BodyType(design.physic["type"])
             design.effect["type"] = EffectType(design.effect["type"])
             design.effect["who"] = EffectWho(design.effect["who"])
             design.effect["when"] = EffectWhen(design.effect["when"])
@@ -903,7 +912,7 @@ class BoxUI():
         body_vertices = [b2Vec2(-1, -1)]*4
 
         for body in sorted_bodies:
-            color = self.env.get_data(body.params["type"]).color
+            color = self.env.get_data(body.physic["type"]).color
             try:
                 pg.draw.polygon(
                     self.screen, color, body.vertices)
@@ -931,7 +940,7 @@ class BoxUI():
     def get_sorted_bodies(self, design=False):
         # TODO: have them already sorted for performance
         if design:
-            bodies_levels: List[tuple(DesignData, int)] = [[b, b.params["level"]]
+            bodies_levels: List[tuple(DesignData, int)] = [[b, b.physic["level"]]
                                                            for b in self.design_bodies]
             bodies_levels.sort(key=lambda x: x[1], reverse=False)
         else:
@@ -958,7 +967,7 @@ class BoxUI():
         text_font = pg.font.SysFont(
             self.font, self.layout.normal_font)
 
-        # data can't be toggled like params
+        # data can't be toggled like physic
         data = ["Next: {}".format(self.set_type.name),
                 "Angle: {}".format(
                 round(-360 * self.design_data.angle / (2 * math.pi), 3))]
@@ -976,41 +985,41 @@ class BoxUI():
 
         # NOTICE: parameters must be in the same order as
         # when initialized in 
-        params = list()
-        params.append("Type: {}".format(
-            BodyType(self.design_data.params["type"]).name))
-        params.append("Reward: {}".format(
-            round(self.design_data.params["reward"], self.layout.ndigits)))
-        params.append("Level: {}".format(
-            round(self.design_data.params["level"])))
+        physic = list()
+        physic.append("Type: {}".format(
+            BodyType(self.design_data.physic["type"]).name))
+        physic.append("Reward: {}".format(
+            round(self.design_data.physic["reward"], self.layout.ndigits)))
+        physic.append("Level: {}".format(
+            round(self.design_data.physic["level"])))
 
-        if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
+        if self.design_data.physic["type"] in (BodyType.DYNAMIC_OBSTACLE,
                                                BodyType.DYNAMIC_ZONE,
                                                BodyType.KINEMATIC_OBSTACLE,
                                                BodyType.KINEMATIC_ZONE):
-            params.append("Velocity: {}".format(
-                round(self.design_data.params["lin_velocity"], self.layout.ndigits)))
-            params.append("Velocity angle: {}".format(
-                round(self.design_data.params["lin_velocity_angle"], self.layout.ndigits)))
-            params.append("Angular velocity: {}".format(
-                round(self.design_data.params["ang_velocity"], self.layout.ndigits)))
-            params.append("Density: {}".format(
-                round(self.design_data.params["density"], self.layout.ndigits)))
-            params.append("Inertia: {}".format(
-                round(self.design_data.params["inertia"], self.layout.ndigits)),)
-            params.append("Friction: {}".format(
-                round(self.design_data.params["friction"], self.layout.ndigits)))
-            params.append("Linear damping: {}".format(
-                round(self.design_data.params["lin_damping"], self.layout.ndigits)))
-            params.append("Angular damping: {}".format(
-                round(self.design_data.params["ang_damping"], self.layout.ndigits)))
+            physic.append("Velocity: {}".format(
+                round(self.design_data.physic["lin_velocity"], self.layout.ndigits)))
+            physic.append("Velocity angle: {}".format(
+                round(self.design_data.physic["lin_velocity_angle"], self.layout.ndigits)))
+            physic.append("Angular velocity: {}".format(
+                round(self.design_data.physic["ang_velocity"], self.layout.ndigits)))
+            physic.append("Density: {}".format(
+                round(self.design_data.physic["density"], self.layout.ndigits)))
+            physic.append("Inertia: {}".format(
+                round(self.design_data.physic["inertia"], self.layout.ndigits)),)
+            physic.append("Friction: {}".format(
+                round(self.design_data.physic["friction"], self.layout.ndigits)))
+            physic.append("Linear damping: {}".format(
+                round(self.design_data.physic["lin_damping"], self.layout.ndigits)))
+            physic.append("Angular damping: {}".format(
+                round(self.design_data.physic["ang_damping"], self.layout.ndigits)))
 
         # increment always as last parameter
-        params.append("Increment: {}".format((self.design_data.float_inc)))
+        physic.append("Increment: {}".format((self.design_data.float_inc)))
 
-        for ix, s in enumerate(params):
+        for ix, s in enumerate(physic):
             pos += b2Vec2(0, text_surface.get_height())
-            if self.design_data.param_group == ParamGroup.PHYSIC and ix == self.design_data.params_ix:
+            if self.design_data.param_group == ParamGroup.PHYSIC and ix == self.design_data.physic_ix:
                 # highlight current param
                 text_surface = text_font.render(
                     "* {}".format(s), True, boxcolors.BLACK, boxcolors.GREEN)

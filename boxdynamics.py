@@ -320,7 +320,7 @@ class BoxEnv(gym.Env):
         size = (width, height)
         angle = -design_data.angle
 
-        type = design_data.params["type"]
+        type = design_data.physic["type"]
         if type == BodyType.AGENT:
             pass
         elif type == BodyType.BORDER:
@@ -344,8 +344,8 @@ class BoxEnv(gym.Env):
         else:
             assert False and "Unknown body type"
 
-        body.userData.reward = design_data.params["reward"]
-        body.userData.level = design_data.params["level"]
+        body.userData.reward = design_data.physic["reward"]
+        body.userData.level = design_data.physic["level"]
 
         body.userData.effect = design_data.effect.copy()
 
@@ -490,16 +490,16 @@ class BoxEnv(gym.Env):
         return body
 
     def set_body_params(self, body: b2Body, design_data: DesignData):
-        body.angularDamping = design_data.params["ang_damping"]
-        body.angularVelocity = design_data.params["ang_velocity"]
-        body.linearDamping = design_data.params["lin_damping"]
-        design_data.params["lin_velocity_angle"] = design_data.params["lin_velocity_angle"] * (
+        body.angularDamping = design_data.physic["ang_damping"]
+        body.angularVelocity = design_data.physic["ang_velocity"]
+        body.linearDamping = design_data.physic["lin_damping"]
+        design_data.physic["lin_velocity_angle"] = design_data.physic["lin_velocity_angle"] * (
             2 * math.pi / 360)
         body.linearVelocity = anglemag_to_vec(
-            angle=design_data.params["lin_velocity_angle"], magnitude=design_data.params["lin_velocity"])
-        body.inertia = design_data.params["inertia"]
-        body.fixtures[0].density = design_data.params["density"]
-        body.fixtures[0].friction = design_data.params["friction"]
+            angle=design_data.physic["lin_velocity_angle"], magnitude=design_data.physic["lin_velocity"])
+        body.inertia = design_data.physic["inertia"]
+        body.fixtures[0].density = design_data.physic["density"]
+        body.fixtures[0].friction = design_data.physic["friction"]
 
     # returns a dictionary which can then be converted to a gym.spaces.Dict
     # defines min, max, shape and of each observation key

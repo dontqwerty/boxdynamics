@@ -117,9 +117,9 @@ class DesignData:
     # TODO: toggle color
     color: tuple = field(default=boxcolors.STATIC_OBSTACLE)
 
-    params: Dict = field(default_factory=dict)
+    physic: Dict = field(default_factory=dict)
     # indicates which param to currently change
-    params_ix: int = 0
+    physic_ix: int = 0
 
     effect: Dict = field(default_factory=dict)
     effect_ix: int = 0
