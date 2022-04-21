@@ -77,7 +77,7 @@ class ContactListener(b2ContactListener):
             # checking effect who
             if effect_whoA == EffectWho.BOTH or \
                 (effect_whoA == EffectWho.AGENT and dataB.type == BodyType.AGENT) or \
-                    (effect_whoA == EffectWho.OTHER and dataB.type != BodyType.AGENT):
+                (effect_whoA == EffectWho.OTHER and dataB.type != BodyType.AGENT):
                 param_0 = dataA.effect["param_0"]
                 param_1 = dataA.effect["param_1"]
                 # performing fixtureA effect
@@ -87,12 +87,14 @@ class ContactListener(b2ContactListener):
                 elif effect_typeA == EffectType.APPLY_FORCE:
                     # calculating force based on angle (param_0)
                     # and mag (param_1)
-                    force = anglemag_to_vec(angle=param_1, magnitude=param_1)
+                    param_0 = param_0 * math.pi / 180
+                    force = anglemag_to_vec(angle=param_0, magnitude=param_1)
                     bodyB.ApplyForce(
                         force=force, point=bodyB.position, wake=True)
                 elif effect_typeA == EffectType.SET_VELOCITY:
+                    param_0 = param_0 * math.pi / 180
                     vel = anglemag_to_vec(angle=param_0, magnitude=param_1)
-                    bodyB.linearVelocity = vel
+                    bodyB.linearVelocity.Set(vel.x, vel.y)
                     pass
                 elif effect_typeA == EffectType.INVERT_VELOCITY:
                     bodyB.linearVelocity = bodyB.linearVelocity * (-1)

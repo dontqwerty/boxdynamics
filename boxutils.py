@@ -13,7 +13,11 @@ from boxdef import (BodyType, DesignData, EffectType, EffectWhen, EffectWho,
 
 
 def toggle_enum(e, skip=[], increase=True):
-    enum_list = list(type(e))
+    try:
+        enum_list = list(type(e))
+    except TypeError as e:
+        logging.error("{}".format(e, type(e)))
+        return
     if increase:
         new_ix = (enum_list.index(e) + 1) % len(enum_list)
     else:
@@ -188,6 +192,8 @@ def dataclass_to_dict(data):
     return dump_db
 
 # TODO: change with get_point_angle everywhere
+
+
 def anglemag_to_vec(angle, magnitude):
     return b2Vec2(math.cos(angle), math.sin(angle)) * magnitude
 

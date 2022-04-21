@@ -36,8 +36,8 @@ class BoxUI():
         self.design_bodies.append(self.design_data)
         # TODO: include in config
         # self.set_type = SetType.DEFAULT
-        # self.set_type = SetType.PREVIOUS
-        self.set_type = SetType.RANDOM
+        self.set_type = SetType.PREVIOUS
+        # self.set_type = SetType.RANDOM
 
         # pygame setup
         pg.init()
@@ -292,11 +292,11 @@ class BoxUI():
                 elif event.key == pg.K_e:
                     if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # TODO: shift for reverse toggle
-                        self.design_data.param_group = toggle_enum(self.design_data.param_group, skip=[], increase=self.shift_pressed)
+                        self.design_data.param_group = toggle_enum(ParamGroup(self.design_data.param_group), skip=[], increase=self.shift_pressed)
                         pass
                 elif event.key == pg.K_n:
                     if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
-                        self.set_type = toggle_enum(self.set_type, skip=[], increase=self.shift_pressed)
+                        self.set_type = toggle_enum(SetType(self.set_type), skip=[], increase=self.shift_pressed)
                         pass
                     pass
                 elif event.key == pg.K_UP:
@@ -641,7 +641,7 @@ class BoxUI():
 
     def toggle_body_type(self, increase=True):
         self.design_data.physic["type"] = toggle_enum(
-            self.design_data.physic["type"], skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT], increase=increase)
+            BodyType(self.design_data.physic["type"]), skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT], increase=increase)
         self.design_data.color = self.env.get_data(
             self.design_data.physic["type"]).color
 
@@ -943,9 +943,9 @@ class BoxUI():
             effect.append("When: {}".format(EffectWhen(
                 self.design_data.effect["when"]).name))
             effect.append("Param A: {}".format(
-                self.design_data.effect["param_0"]))
+                round(self.design_data.effect["param_0"], self.layout.ndigits)))
             effect.append("Param B: {}".format(
-                self.design_data.effect["param_1"]))
+                round(self.design_data.effect["param_1"], self.layout.ndigits)))
         elif self.design_data.effect["type"] in (EffectType.SET_LIN_DAMP,
                                                  EffectType.SET_ANG_DAMP,
                                                  EffectType.SET_FRICTION,
@@ -956,7 +956,7 @@ class BoxUI():
             effect.append("When: {}".format(EffectWhen(
                 self.design_data.effect["when"]).name))
             effect.append("Param A: {}".format(
-                self.design_data.effect["param_0"]))
+                round(self.design_data.effect["param_0"], self.layout.ndigits)))
         elif self.design_data.effect["type"] in (EffectType.DONE,
                                                  EffectType.RESET,
                                                  EffectType.INVERT_VELOCITY):

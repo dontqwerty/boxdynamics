@@ -177,8 +177,9 @@ class BoxEnv(gym.Env):
         # effects with EffectWhen.DURING_CONTACT
         for bodyA in self.world.bodies:
             dataA: BodyData = bodyA.userData
-            for bodyB in dataA.contacts:
-                self.contact_listener.contact_effect(bodyA, bodyB, EffectWhen.DURING_CONTACT)
+            if dataA.effect["type"] != EffectType.NONE:
+                for bodyB in dataA.contacts:
+                    self.contact_listener.contact_effect(bodyA, bodyB, EffectWhen.DURING_CONTACT)
 
         # clear forces or they will stay permanently
         self.world.ClearForces()
