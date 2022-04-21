@@ -81,7 +81,7 @@ class ContactListener(b2ContactListener):
                 param_0 = dataA.effect["param_0"]
                 param_1 = dataA.effect["param_1"]
                 # performing fixtureA effect
-                logging.debug("perfmorming effect {}".format(effect_typeA.name))
+                logging.debug("perfmorming effect {} on {} at {}".format(effect_typeA.name, effect_whoA.name, effect_whenA.name))
                 if effect_typeA == EffectType.NONE:
                     pass
                 elif effect_typeA == EffectType.APPLY_FORCE:

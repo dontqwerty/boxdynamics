@@ -12,10 +12,6 @@ from boxdef import (BodyType, DesignData, EffectType, EffectWhen, EffectWho,
                     SetType)
 
 
-# TODO: change with get_point_angle everywhere
-def anglemag_to_vec(angle, magnitude):
-    return b2Vec2(math.cos(angle), math.sin(angle)) * magnitude
-
 def toggle_enum(e, skip=[], increase=True):
     enum_list = list(type(e))
     if increase:
@@ -30,6 +26,7 @@ def toggle_enum(e, skip=[], increase=True):
 
     return new_e
 
+
 def check_design_validity(design: DesignData):
     # TODO: add other checks (?)
     if all(v is not None for v in design.vertices):
@@ -39,11 +36,13 @@ def check_design_validity(design: DesignData):
         logging.warning("Invalid design {}".format(design))
         return False
 
+
 def get_effect(type: EffectType, param_0=0.0, param_1=0.0, who=EffectWho.AGENT, when=EffectWhen.DURING_CONTACT):
     # TODO: angle in degrees not radians
     effect = {"type": type, "who": who, "when": when,
-                "param_0": param_0, "param_1": param_1}
+              "param_0": param_0, "param_1": param_1}
     return effect
+
 
 def get_design_data(set_type=SetType.DEFAULT, current_design: DesignData = DesignData()):
 
@@ -187,6 +186,10 @@ def dataclass_to_dict(data):
 
     dump_db = dict(dump_db)
     return dump_db
+
+# TODO: change with get_point_angle everywhere
+def anglemag_to_vec(angle, magnitude):
+    return b2Vec2(math.cos(angle), math.sin(angle)) * magnitude
 
 
 def get_point_angle(angle: float, length: float = 1, from_point: b2Vec2 = b2Vec2(0, 0)) -> b2Vec2:

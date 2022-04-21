@@ -50,6 +50,19 @@ class EffectType(IntEnum):
 
 
 @unique
+class SetType(IntEnum):
+    DEFAULT = 0
+    PREVIOUS = 1
+    RANDOM = 2
+
+
+@unique
+class ParamGroup(IntEnum):
+    PHYSIC = 0
+    EFFECT = 1
+
+
+@unique
 class UIMode(IntEnum):
     NONE = 0
     RESIZE = 1
@@ -96,16 +109,6 @@ class ScreenLayout:
     popup_pos: b2Vec2 = (b2Vec2(width, height) - popup_size / 2) / 2
     ndigits: int = 4
 
-@unique
-class SetType(IntEnum):
-    DEFAULT = 0
-    PREVIOUS = 1
-    RANDOM = 2
-
-@unique
-class ParamGroup(IntEnum):
-    PHYSIC = 0
-    EFFECT = 1
 
 @dataclass
 class DesignData:

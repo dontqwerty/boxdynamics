@@ -13,7 +13,7 @@ from Box2D import b2Body, b2Fixture, b2PolygonShape, b2Vec2, b2World
 
 import boxcolors as color
 from boxcontacts import ContactListener
-from boxdef import (BodyType, BodyData, DesignData, EffectType, ScreenLayout,
+from boxdef import (BodyType, BodyData, DesignData, EffectType, EffectWhen, ScreenLayout,
                     UIMode)
 from boxraycast import RayCastClosestCallback
 from boxui import BoxUI
@@ -173,6 +173,12 @@ class BoxEnv(gym.Env):
         # Make Box2D simulate the physics of our world for one step.
         self.world.Step(self.cfg.time_step,
                         self.cfg.vel_iter, self.cfg.pos_iter)
+
+        # effects with EffectWhen.DURING_CONTACT
+        for bodyA in self.world.bodies:
+            dataA: BodyData = bodyA.userData
+            for bodyB in dataA.contacts:
+                self.contact_listener.contact_effect(bodyA, bodyB, EffectWhen.DURING_CONTACT)
 
         # clear forces or they will stay permanently
         self.world.ClearForces()
