@@ -1,51 +1,39 @@
 import logging
 import math
 from typing import List
-from logging import debug
 
 from Box2D import b2Body, b2Contact, b2ContactListener, b2Vec2
 
-from boxdef import BodyType, EffectType
+from boxdef import BodyData, BodyType, EffectType, EffectWhen, EffectWho
+from boxutils import anglemag_to_vec
 
 
 class ContactListener(b2ContactListener):
     def __init__(self, env):
         b2ContactListener.__init__(self)
         self.env = env
-
         self.contacts: List[dict] = list()
-
-        # list with contact number in case of an agent contact
-        self.agent_contacts_num = list()
-        # list with contact number in case of a border contact
-        # agent contacts are not copied here
-        self.border_contacts_num = list()
-
-        # creating list with all possible contact types
-        self.contact_types = list()  # list of lists [BodyType, BodyType]
-        contact_number = 0
-        type_list = list(BodyType)
-        for type_a in list(BodyType):
-            for type_b in type_list:
-                contact_type = [type_a, type_b]
-                self.contact_types.append(contact_type)
-                if BodyType.AGENT in contact_type:
-                    self.agent_contacts_num.append(contact_number)
-                elif BodyType.BORDER in contact_type:
-                    self.border_contacts_num.append(contact_number)
-                contact_number += 1
-            # since [type_0, type_1] is equal to [type_1, type_0]
-            type_list.remove(type_a)
 
     def BeginContact(self, contact: b2Contact):
         # keeping track of which body is in touch with others
         self.add_contact(contact)
-        self.handle_contact_begin(contact)
+
+        print(contact.fixtureA.body.userData.type, contact.fixtureB.body.userData.type)
+        # performing bodyA effect
+        self.contact_effect(contact.fixtureA.body, contact.fixtureB.body, EffectWhen.ON_CONTACT)
+        # performing bodyB effect
+        self.contact_effect(contact.fixtureB.body, contact.fixtureA.body, EffectWhen.ON_CONTACT)
+
         pass
 
     def EndContact(self, contact):
         # updating which body is in touch with others
         self.remove_contact(contact)
+
+        # performing bodyA effect
+        self.contact_effect(contact.fixtureA.body, contact.fixtureB.body, EffectWhen.OFF_CONTACT)
+        # performing bodyB effect
+        self.contact_effect(contact.fixtureB.body, contact.fixtureA.body, EffectWhen.OFF_CONTACT)
         pass
 
     def PreSolve(self, contact, oldMainfold):
@@ -73,73 +61,59 @@ class ContactListener(b2ContactListener):
                     {"bodyA": contact.fixtureA.body, "bodyB": contact.fixtureB.body})
                 break
 
-    def get_contact_number(self, contact):
-        type_a = contact.fixtureA.body.userData.type
-        type_b = contact.fixtureB.body.userData.type
-        types = [type_a, type_b]
+    def contact_effect(self, bodyA: b2Body, bodyB: b2Body, when: EffectWhen):
+        dataA: BodyData = bodyA.userData
+        dataB: BodyData = bodyB.userData
 
-        for tix, contact_type in enumerate(self.contact_types):
-            if set(contact_type) == set(types):
-                return tix
+        effect_typeA = dataA.effect["type"]
+        effect_whoA = dataA.effect["who"]
+        effect_whenA = dataA.effect["when"]
+        # effect_typeB = dataB.effect["type"]
+        # effect_whoB = dataB.effect["who"]
+        # effect_whenB = dataB.effect["when"]
 
-    def effect(self, body: b2Body, effect_type: EffectType, new_value=None):
-        # TODO: new value check
-        if effect_type == EffectType.SET_VELOCITY:
-            # new_value: b2Vec2
-            body.linearVelocity = new_value
-        if effect_type == EffectType.APPLY_FORCE:
-            # new_value: [float, float]
-            body.ApplyForce(
-                force=b2Vec2(new_value), point=body.position, wake=True)
-        elif effect_type == EffectType.DONE:
-            self.env.done = True
-        elif effect_type == EffectType.RESET:
-            self.env.reset()
-        pass
-
-    def handle_contact_begin(self, contact: b2Contact):
-        contact_num = self.get_contact_number(contact)
-
-        if contact_num in self.agent_contacts_num:
-            self.handle_agent_contact(contact)
-        elif contact_num in self.border_contacts_num:
-            self.handle_border_contact(contact)
-        pass
-
-    def handle_agent_contact(self, contact: b2Contact):
-        # TODO: buxfix KeyError
-        if contact.fixtureA.body.userData.type == BodyType.AGENT:
-            agent = contact.fixtureA.body
-            body = contact.fixtureB.body
-        else:
-            body = contact.fixtureA.body
-            agent = contact.fixtureB.body
-
-        try:
-            # get effect type
-            effect_type = body.userData.effect["type"]
-
-            # get value if needed
-            value = body.userData.effect["value"]
-
-            # perform effect
-            self.effect(agent, effect_type, value)
-        except KeyError:
-            # TODO: better
-            logging.warn("Unable to perform effect")
-            logging.warn(body.userData.effect)
-            pass
-        pass
-
-    def handle_border_contact(self, contact):
-        if contact.fixtureA.body.userData.type == BodyType.BORDER:
-            # body B is the moving one
-            body = contact.fixtureB.body
-            value = contact.fixtureB.body.linearVelocity * -1
-        else:
-            # body A is the moving one
-            body = contact.fixtureA.body
-            value = contact.fixtureA.body.linearVelocity * -1
-
-        self.effect(body, EffectType.SET_VELOCITY, value)
+        # checking effect when
+        if effect_whenA == when:
+            # checking effect who
+            if effect_whoA == EffectWho.BOTH or (effect_whoA == EffectWho.AGENT and dataB.type == BodyType.AGENT) or (effect_whoA == EffectWho.OTHER and dataB.type != BodyType.AGENT):
+                param_0 = dataA.effect["param_0"]
+                param_1 = dataA.effect["param_1"]
+                # performing fixtureA effect
+                if effect_typeA == EffectType.NONE:
+                    pass
+                elif effect_typeA == EffectType.APPLY_FORCE:
+                    # calculating force based on angle (param_0)
+                    # and mag (param_1)
+                    force = anglemag_to_vec(angle=param_1, magnitude=param_1)
+                    bodyB.ApplyForce(force=force, point=bodyB.position, wake=True)
+                elif effect_typeA == EffectType.SET_VELOCITY:
+                    vel = anglemag_to_vec(angle=param_0, magnitude=param_1)
+                    bodyB.linearVelocity = vel
+                    pass
+                elif effect_typeA == EffectType.INVERT_VELOCITY:
+                    bodyB.linearVelocity = bodyB.linearVelocity * (-1)
+                    pass
+                elif effect_typeA == EffectType.BOUNCE:
+                    # TODO: bounce
+                    pass
+                elif effect_typeA == EffectType.SET_LIN_DAMP:
+                    bodyB.linearDamping = param_0
+                    pass
+                elif effect_typeA == EffectType.SET_ANG_DAMP:
+                    bodyB.angularDamping = param_0
+                    pass
+                elif effect_typeA == EffectType.SET_MAX_ACTION:
+                    # TODO: max action
+                    pass
+                elif effect_typeA == EffectType.SET_FRICTION:
+                    bodyB.fixtures[0].friction = param_0
+                    pass
+                elif effect_typeA == EffectType.DONE:
+                    self.env.done = True
+                    pass
+                elif effect_typeA == EffectType.RESET:
+                    self.env.reset()
+                    pass
+                else:
+                    assert False and "EffectType not supported"
         pass

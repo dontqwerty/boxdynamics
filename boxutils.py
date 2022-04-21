@@ -7,6 +7,10 @@ from logging import debug
 from Box2D import b2Vec2
 
 
+# TODO: change with get_point_angle everywhere
+def anglemag_to_vec(angle, magnitude):
+    return b2Vec2(math.cos(angle), math.sin(angle)) * magnitude
+
 def dataclass_to_dict(data):
         dump_db = list()
         for name, value in list(data.__dict__.items()):

@@ -13,11 +13,11 @@ from Box2D import b2Body, b2Fixture, b2PolygonShape, b2Vec2, b2World
 
 import boxcolors as color
 from boxcontacts import ContactListener
-from boxdef import (BodyType, DesignData, EffectType, ScreenLayout,
+from boxdef import (BodyType, BodyData, DesignData, EffectType, ScreenLayout,
                     UIMode)
 from boxraycast import RayCastClosestCallback
 from boxui import BoxUI
-from boxutils import dataclass_to_dict, get_intersection, get_line_eq
+from boxutils import anglemag_to_vec, dataclass_to_dict, get_intersection, get_line_eq
 
 
 @unique
@@ -89,17 +89,6 @@ class EnvCfg:
     design_bodies: List = field(default_factory=list)
 
 
-@dataclass
-class BodyData:
-    type: IntEnum = BodyType.DEFAULT
-    color: tuple = color.WHITE
-    # list of bodies in contact with this body
-    contacts: List[b2Body] = field(default_factory=list)
-    reward: float = 0  # reward when agents hits the object
-    level: int = 0
-    effect: Dict = field(default_factory=dict)
-
-
 # represents the data for each ray coming out of the agent
 @dataclass
 class Observation:
@@ -120,8 +109,9 @@ class BoxEnv(gym.Env):
         super(BoxEnv, self).__init__()
 
         # world keeps track of objects and physics
+        self.contact_listener = ContactListener(self)
         self.world = b2World(gravity=(0, 0), doSleep=True,
-                             contactListener=ContactListener(self))
+                             contactListener=self.contact_listener)
 
         # setting configuration based on deafults
         # needed before using self.cfg
@@ -266,10 +256,7 @@ class BoxEnv(gym.Env):
         elif action is not None:
             # calculating where to apply force
             # target is "head" of agent
-            self.action = b2Vec2(action[1] *
-                                 math.cos(action[0] + self.agent_body.angle),
-                                 action[1] *
-                                 math.sin(action[0] + self.agent_body.angle))
+            self.action = anglemag_to_vec(angle=action[0] + self.agent_body.angle, magnitude=action[1])
         else:
             self.action = b2Vec2(0, 0)
 
@@ -501,8 +488,7 @@ class BoxEnv(gym.Env):
         body.linearDamping = design_data.params["lin_damping"]
         design_data.params["lin_velocity_angle"] = design_data.params["lin_velocity_angle"] * (
             2 * math.pi / 360)
-        body.linearVelocity = b2Vec2(math.cos(design_data.params["lin_velocity_angle"]), math.sin(
-            design_data.params["lin_velocity_angle"])) * design_data.params["lin_velocity"]
+        body.linearVelocity = anglemag_to_vec(angle=design_data.params["lin_velocity_angle"], magnitude=design_data.params["lin_velocity"])
         body.inertia = design_data.params["inertia"]
         body.fixtures[0].density = design_data.params["density"]
         body.fixtures[0].friction = design_data.params["friction"]
@@ -661,11 +647,12 @@ class BoxEnv(gym.Env):
 
     def get_border_data(self) -> BodyData:
         # todo border effect
-        effect = {"type": EffectType.APPLY_FORCE, "value": [100, 100]}
+        effect = self.ui.get_effect(EffectType.NONE)
         return BodyData(type=BodyType.BORDER, color=color.BORDER, effect=effect)
 
     def get_agent_data(self) -> BodyData:
-        return BodyData(type=BodyType.AGENT, color=color.AGENT, level=np.inf)
+        effect = self.ui.get_effect(EffectType.NONE)
+        return BodyData(type=BodyType.AGENT, color=color.AGENT, level=np.inf, effect=effect)
 
     def get_static_obstacle_data(self) -> BodyData:
         return BodyData(type=BodyType.STATIC_OBSTACLE, color=color.STATIC_OBSTACLE)

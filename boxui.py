@@ -15,7 +15,7 @@ from Box2D import b2Body, b2Vec2
 import boxcolors
 from boxdef import (BodyType, DesignData, EffectType, EffectWhen, EffectWho, ScreenLayout,
                     UIMode)
-from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle, get_point_angle
+from boxutils import anglemag_to_vec, dataclass_to_dict, get_intersection, get_line_eq_angle, get_point_angle
 
 DESIGN_SLEEP = 0.001  # delay in seconds while designing world
 
@@ -46,8 +46,8 @@ class BoxUI():
         self.design_bodies.append(self.design_data)
         # TODO: include in config
         # self.set_type = SetType.DEFAULT
-        # self.set_type = SetType.PREVIOUS
-        self.set_type = SetType.RANDOM
+        self.set_type = SetType.PREVIOUS
+        # self.set_type = SetType.RANDOM
 
         # pygame setup
         pg.init()
@@ -691,9 +691,7 @@ class BoxUI():
                 self.design_data.points[0], mouse_pos)
             self.design_data.angle = diagonal_angle + self.design_data.zero_angle
 
-            self.design_data.points[1] = self.design_data.points[0] + b2Vec2(
-                math.cos(diagonal_angle), math.sin(diagonal_angle)) * diagonal
-
+            self.design_data.points[1] = self.design_data.points[0] + anglemag_to_vec(angle=diagonal_angle, magnitude=diagonal)
     def toggle_param(self):
         if self.shift_pressed == False:
             inc = 1
@@ -820,6 +818,10 @@ class BoxUI():
             design = DesignData(**body)
             design.points = [b2Vec2(p) for p in design.points]
             design.vertices = [b2Vec2(p) for p in design.vertices]
+            design.params["type"] = BodyType(design.params["type"])
+            design.effect["type"] = EffectType(design.effect["type"])
+            design.effect["who"] = EffectWho(design.effect["who"])
+            design.effect["when"] = EffectWhen(design.effect["when"])
             self.design_bodies.append(design)
 
         logging.info("Loaded design {}".format(filename))
@@ -1070,7 +1072,7 @@ class BoxUI():
         if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
                                                 EffectType.SET_VELOCITY):
             effect.append("Who: {}".format(EffectWho(self.design_data.effect["who"]).name))
-            effect.append("When: {}".format(EffectWho(self.design_data.effect["when"]).name))
+            effect.append("When: {}".format(EffectWhen(self.design_data.effect["when"]).name))
             effect.append("Param A: {}".format(self.design_data.effect["param_0"]))
             effect.append("Param B: {}".format(self.design_data.effect["param_1"]))
         elif self.design_data.effect["type"] in (EffectType.SET_LIN_DAMP,
@@ -1096,11 +1098,6 @@ class BoxUI():
         
             pos += b2Vec2(0, text_surface.get_height())
             s = "* {}".format(s)
-
-            # if hasattr(self.design_data.effect[s], "name"):
-            #     s = "* {}: {}".format(s, self.design_data.effect[s].name)
-            # else:
-            #     s = "* {}: {}".format(s, self.design_data.effect[s])
                 
             text_surface = text_font.render(s, True, boxcolors.BLACK, back_color)
             self.screen.blit(text_surface, pos)

@@ -1,9 +1,8 @@
 from dataclasses import dataclass, field
 from enum import IntEnum, unique
-from turtle import width
 from typing import Dict, List
 
-from Box2D import b2Vec2
+from Box2D import b2Vec2, b2Body
 
 import boxcolors
 
@@ -57,6 +56,17 @@ class UIMode(IntEnum):
     INPUT_LOAD = 5
     QUIT_CONFIRMATION = 6
     USE_CONFIRMATION = 7
+
+
+@dataclass
+class BodyData:
+    type: IntEnum = BodyType.DEFAULT
+    color: tuple = boxcolors.WHITE
+    # list of bodies in contact with this body
+    contacts: List[b2Body] = field(default_factory=list)
+    reward: float = 0  # reward when agents hits the object
+    level: int = 0
+    effect: Dict = field(default_factory=dict)
 
 
 @dataclass
