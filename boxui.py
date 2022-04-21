@@ -4,7 +4,7 @@ import math
 from multiprocessing.connection import answer_challenge
 import random
 from dataclasses import is_dataclass
-from enum import IntEnum
+from enum import IntEnum, unique
 from time import sleep
 from typing import Dict, List
 from cv2 import norm
@@ -14,13 +14,14 @@ import pygame as pg
 from Box2D import b2Body, b2Vec2
 
 import boxcolors
-from boxdef import (BodyType, DesignData, EffectType, ScreenLayout,
+from boxdef import (BodyType, DesignData, EffectType, EffectWhen, ScreenLayout,
                     UIMode)
 from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle, get_point_angle
 
 DESIGN_SLEEP = 0.001  # delay in seconds while designing world
 
 
+@unique
 class SetType(IntEnum):
     DEFAULT = 0
     PREVIOUS = 1
@@ -52,9 +53,10 @@ class BoxUI():
         # pygame setup
         pg.init()
         pg.font.init()  # to render text
-        if self.layout.size == b2Vec2(0, 0): # fullscreen
+        if self.layout.size == b2Vec2(0, 0):  # fullscreen
             info = pg.display.Info()
-            self.screen = pg.display.set_mode((info.current_w, info.current_h), pg.DOUBLEBUF | pg.FULLSCREEN, 32)
+            self.screen = pg.display.set_mode(
+                (info.current_w, info.current_h), pg.DOUBLEBUF | pg.FULLSCREEN, 32)
         else:
             self.screen = pg.display.set_mode(
                 (self.layout.width, self.layout.height), pg.DOUBLEBUF, 32)
@@ -119,8 +121,7 @@ class BoxUI():
             s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.board_y_shift = text_surface.get_height()
         pos = b2Vec2(self.layout.border, self.layout.border)
-        self.screen.blit(text_surface, pos) # TODO: blit only once
-
+        self.screen.blit(text_surface, pos)  # TODO: blit only once
 
         # TODO: fix that when designing and quit confirmation is asked
         # the observation vectors of the agente can be seen
@@ -198,7 +199,7 @@ class BoxUI():
 
     def copy_design_data(self, design: DesignData):
         design_dict: Dict[str,
-                        DesignData] = design.__dict__  # pointer
+                          DesignData] = design.__dict__  # pointer
         design_data: Dict[str, DesignData] = dict()
 
         # checking for fields that need to be copied manually
@@ -235,6 +236,37 @@ class BoxUI():
 
         return design_copy
 
+    # def get_effect_params_len(self, type: EffectType):
+    #     if type == EffectType.NONE:
+    #         l = 0
+    #     elif type == EffectType.APPLY_FORCE:
+    #         l = 2
+    #     elif type == EffectType.BOUNCE:
+    #         l = 1
+    #     elif type == EffectType.DONE:
+    #         l = 0
+    #     elif type == EffectType.INVERT_VELOCITY:
+    #         l = 1
+    #     elif type == EffectType.RESET:
+    #         l = 0
+    #     elif type == EffectType.SET_ANG_DAMP:
+    #         l = 1
+    #     elif type == EffectType.SET_LIN_DAMP:
+    #         l = 1
+    #     elif type == EffectType.SET_MAX_ACTION:
+    #         l = 1
+    #     elif type == EffectType.SET_VELOCITY:
+    #         l = 2
+    #     elif type == EffectType.SET_FRICTION:
+    #         l = 1
+    #     else:
+    #         assert False and "EffectType not supported"
+    #     return l
+
+    def get_effect(self, type: EffectType, param_0=None, param_1=None, when=EffectWhen.DURING_CONTACT):
+        effect = {"type": type, "param_0": param_0, "param_1": param_1, "when": when}
+        return effect
+
     def get_design_data(self, set_type=SetType.DEFAULT):
         design_data = DesignData()
         design_data.points = [None] * 2
@@ -253,14 +285,13 @@ class BoxUI():
                                   "friction": 0.0,
                                   "lin_damping": 0.0,
                                   "ang_damping": 0.0}
-            design_data.effect = {"type": EffectType.APPLY_FORCE,
-                                  "value": [0, 0]}  # TODO: let value be choosen at runtime
+            design_data.effect = self.get_effect(EffectType.NONE)
         elif set_type == SetType.PREVIOUS:
             # indexes
-            design_data.dict_ix = self.design_data.dict_ix
+            design_data.groups_ix = self.design_data.groups_ix
             design_data.params_ix = self.design_data.params_ix
             design_data.effect_ix = self.design_data.effect_ix
-            
+
             design_data.params = self.design_data.params.copy()
             design_data.effect = self.design_data.effect.copy()
         elif set_type == SetType.RANDOM:
@@ -277,9 +308,10 @@ class BoxUI():
                                   "friction": random.uniform(0, 0.001),
                                   "lin_damping": random.uniform(0, 0.001),
                                   "ang_damping": random.uniform(0, 0.001)}
-            design_data.effect = {"type": EffectType.APPLY_FORCE,
-                                  "value": [1000000, 1000000]}
-        design_data.dicts = [design_data.params, design_data.effect]
+            # TODO: random effect
+            design_data.effect = self.get_effect(EffectType.NONE)
+
+        design_data.groups = [design_data.params, design_data.effect]
         return design_data
 
     def user_input(self):
@@ -385,7 +417,8 @@ class BoxUI():
                 elif event.key == pg.K_e:
                     if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # TODO: shift for reverse toggle
-                        self.design_data.dict_ix = (self.design_data.dict_ix + 1) % len(self.design_data.dicts)
+                        self.design_data.groups_ix = (
+                            self.design_data.groups_ix + 1) % len(self.design_data.groups)
                         pass
                     pass
                 elif event.key == pg.K_UP:
@@ -471,7 +504,7 @@ class BoxUI():
 
     def first_exists(self):
         return self.design_data.points[0] is not None
-    
+
     def second_exists(self):
         return self.design_data.points[1] is not None
 
@@ -642,40 +675,47 @@ class BoxUI():
         mouse_pos = b2Vec2(pg.mouse.get_pos())
         if self.design_data.rotated is False:
             if self.design_data.normal_plane:
-                self.design_data.zero_angle = -math.atan(self.design_data.height / (self.design_data.width))
+                self.design_data.zero_angle = - \
+                    math.atan(self.design_data.height /
+                              (self.design_data.width))
             else:
-                self.design_data.zero_angle = math.atan(self.design_data.height / (self.design_data.width))
+                self.design_data.zero_angle = math.atan(
+                    self.design_data.height / (self.design_data.width))
             self.design_data.rotated = True
         else:
-            diagonal = (self.design_data.points[1] - self.design_data.points[0]).length
-            diagonal_angle = self.get_angle(self.design_data.points[0], mouse_pos)
+            diagonal = (
+                self.design_data.points[1] - self.design_data.points[0]).length
+            diagonal_angle = self.get_angle(
+                self.design_data.points[0], mouse_pos)
             self.design_data.angle = diagonal_angle + self.design_data.zero_angle
 
-            self.design_data.points[1] = self.design_data.points[0] + b2Vec2(math.cos(diagonal_angle), math.sin(diagonal_angle)) * diagonal
+            self.design_data.points[1] = self.design_data.points[0] + b2Vec2(
+                math.cos(diagonal_angle), math.sin(diagonal_angle)) * diagonal
 
     def toggle_param(self):
         if self.shift_pressed == False:
             inc = 1
         else:
             inc = -1
-        if self.design_data.dicts[self.design_data.dict_ix] == self.design_data.params:
+        if self.design_data.groups[self.design_data.groups_ix] == self.design_data.params:
             # we are toggling design params
             if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
-                                                BodyType.DYNAMIC_ZONE,
-                                                BodyType.KINEMATIC_OBSTACLE,
-                                                BodyType.KINEMATIC_ZONE):
+                                                   BodyType.DYNAMIC_ZONE,
+                                                   BodyType.KINEMATIC_OBSTACLE,
+                                                   BodyType.KINEMATIC_ZONE):
                 self.design_data.params_ix = (
                     self.design_data.params_ix + inc) % len(list(self.design_data.params))
             else:
                 # TODO: only toggle static bodies params not hardcoded
                 self.design_data.params_ix = (
                     self.design_data.params_ix + inc) % 3
-        elif self.design_data.dicts[self.design_data.dict_ix] == self.design_data.effect:
+        elif self.design_data.groups[self.design_data.groups_ix] == self.design_data.effect:
             # we are toggling effect params
-            self.design_data.effect_ix = (self.design_data.effect_ix + inc) % len(self.design_data.effect)
+            self.design_data.effect_ix = (
+                self.design_data.effect_ix + inc) % len(self.design_data.effect)
             pass
         else:
-            assert False and "Added something to self.design_data.dicts?"
+            assert False and "Added something to self.design_data.groups?"
 
     def modify_param(self, increase=True):
         param_name = list(self.design_data.params)[self.design_data.params_ix]
@@ -854,13 +894,17 @@ class BoxUI():
                 pass
 
         for vix, v in enumerate(body_vertices):
-            pg.draw.line(self.screen, boxcolors.YELLOW, v, body_vertices[(vix + 1) % len(body_vertices)])
+            pg.draw.line(self.screen, boxcolors.YELLOW, v,
+                         body_vertices[(vix + 1) % len(body_vertices)])
             if vix == 0:
-                pg.draw.circle(self.screen, boxcolors.YELLOW, v, self.layout.big_dot_radius)
+                pg.draw.circle(self.screen, boxcolors.YELLOW,
+                               v, self.layout.big_dot_radius)
             else:
-                pg.draw.circle(self.screen, boxcolors.YELLOW, v, self.layout.small_dot_radius)
+                pg.draw.circle(self.screen, boxcolors.YELLOW,
+                               v, self.layout.small_dot_radius)
 
         self.render_design_data()
+        self.render_effects()
 
     def get_sorted_bodies(self, design=False):
         # TODO: have them already sorted for performance
@@ -880,7 +924,8 @@ class BoxUI():
         text_font = pg.font.SysFont(
             self.font, self.layout.big_font)
 
-        pos = b2Vec2(self.layout.border, self.board_y_shift + self.layout.border)
+        pos = b2Vec2(self.layout.border,
+                     self.board_y_shift + self.layout.border)
 
         # title
         s = "DESIGN DATA"
@@ -893,7 +938,7 @@ class BoxUI():
 
         # data can't be toggled like params
         data = ["Angle: {}".format(
-                    round(-360 * self.design_data.angle / (2 * math.pi), 3))]
+            round(-360 * self.design_data.angle / (2 * math.pi), 3))]
 
         for ix, s in enumerate(data):
             pos += b2Vec2(0, text_surface.get_height())
@@ -915,9 +960,9 @@ class BoxUI():
             round(self.design_data.params["level"])))
 
         if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
-                                                BodyType.DYNAMIC_ZONE,
-                                                BodyType.KINEMATIC_OBSTACLE,
-                                                BodyType.KINEMATIC_ZONE):
+                                               BodyType.DYNAMIC_ZONE,
+                                               BodyType.KINEMATIC_OBSTACLE,
+                                               BodyType.KINEMATIC_ZONE):
             params.append("Velocity: {}".format(
                 round(self.design_data.params["lin_velocity"], self.layout.ndigits)))
             params.append("Velocity angle: {}".format(
@@ -940,7 +985,7 @@ class BoxUI():
 
         for ix, s in enumerate(params):
             pos += b2Vec2(0, text_surface.get_height())
-            if ix == self.design_data.params_ix:
+            if self.design_data.groups[self.design_data.groups_ix] == self.design_data.params and ix == self.design_data.params_ix:
                 # highlight current param
                 text_surface = text_font.render(
                     "* {}".format(s), True, boxcolors.BLACK, boxcolors.GREEN)
@@ -949,7 +994,41 @@ class BoxUI():
                     "- {}".format(s), True, boxcolors.BLACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
-        effects = list()
+        self.board_y_shift = pos.y
+
+    def render_effects(self):
+        # rendering design data when user is designin shape
+        text_font = pg.font.SysFont(
+            self.font, self.layout.big_font)
+
+        pos = b2Vec2(self.layout.border,
+                     self.board_y_shift + self.layout.border)
+
+        # title
+        s = "EFFECTS"
+        text_surface = text_font.render(
+            s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
+        self.screen.blit(text_surface, pos)
+
+        text_font = pg.font.SysFont(
+            self.font, self.layout.normal_font)
+
+        for ix, s in enumerate(self.design_data.effect):
+            if self.design_data.groups[self.design_data.groups_ix] == self.design_data.effect and ix == self.design_data.effect_ix:
+                # highlight current param
+                back_color = boxcolors.GREEN
+            else:
+                back_color = boxcolors.INFO_BACK
+        
+            pos += b2Vec2(0, text_surface.get_height())
+
+            if hasattr(self.design_data.effect[s], "name"):
+                s = "* {}: {}".format(s, self.design_data.effect[s].name)
+            else:
+                s = "* {}: {}".format(s, self.design_data.effect[s])
+                
+            text_surface = text_font.render(s, True, boxcolors.BLACK, back_color)
+            self.screen.blit(text_surface, pos)
 
         self.board_y_shift = pos.y
 
@@ -958,7 +1037,8 @@ class BoxUI():
             self.font, self.layout.big_font)
 
         # title
-        pos = b2Vec2(self.layout.border, self.board_y_shift + (2*self.layout.border))
+        pos = b2Vec2(self.layout.border, self.board_y_shift +
+                     (2*self.layout.border))
         text_surface = text_font.render(
             "COMMANDS", True, boxcolors.BLACK, boxcolors.INFO_BACK)
         self.screen.blit(text_surface, pos)
@@ -973,7 +1053,7 @@ class BoxUI():
             text_surface = text_font.render(
                 s, True, boxcolors.BACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
-        
+
         self.board_y_shift = pos.y
 
     def set_commands(self):
@@ -988,8 +1068,10 @@ class BoxUI():
                              {"key": "S", "description": "save"},
                              {"key": "L", "description": "load"},
                              {"key": "SPACE", "description": "toggle parameter"},
-                             {"key": "(roll) UP", "description": "increase parameter"},
-                             {"key": "(roll) DOWN", "description": "decrease parameter"},
+                             {"key": "(roll) UP",
+                              "description": "increase parameter"},
+                             {"key": "(roll) DOWN",
+                              "description": "decrease parameter"},
                              {"key": "RIGHT", "description": "increase parameter inc"},
                              {"key": "LEFT", "description": "decrease parameter inc"},
                              {"key": "DEL", "description": "delete object"},

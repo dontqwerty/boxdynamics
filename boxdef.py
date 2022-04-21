@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import IntEnum, unique
 from turtle import width
 from typing import Dict, List
 
@@ -7,7 +7,7 @@ from Box2D import b2Vec2
 
 import boxcolors
 
-
+@unique
 class BodyType(IntEnum):
     AGENT = 0
     STATIC_OBSTACLE = 1
@@ -19,14 +19,31 @@ class BodyType(IntEnum):
     BORDER = 7
     DEFAULT = 8
 
+@unique
+class EffectWhen(IntEnum):
+    DURING_CONTACT = 0
+    ON_CONTACT = 1
+    OFF_CONTACT = 2
 
+@unique
 class EffectType(IntEnum):
+    # params: mag, angle
     SET_VELOCITY = 0  # sets given body variable
     APPLY_FORCE = 1
+    # params: coeff
+    SET_LIN_DAMP = 6
+    SET_ANG_DAMP = 7
+    SET_FRICTION = 8
+    SET_MAX_ACTION = 9
+    BOUNCE = 10
+    # params: none
+    NONE = 5
     DONE = 2  # TODO: sets self.done in BoxEnv to True
     RESET = 3  # TODO: calls BoxEnv().reset()
+    INVERT_VELOCITY = 4
 
 
+@unique
 class UIMode(IntEnum):
     NONE = 0
     RESIZE = 1
@@ -78,7 +95,6 @@ class DesignData:
     # TODO: toggle color
     color: tuple = field(default=boxcolors.STATIC_OBSTACLE)
 
-    dict_ix: int = 0
 
     params: Dict = field(default_factory=dict)
     # indicates which param to currently change
@@ -87,6 +103,7 @@ class DesignData:
     effect: Dict = field(default_factory=dict)
     effect_ix: int = 0
 
-    dicts: List = field(default_factory=list)
+    groups: List = field(default_factory=list)
+    groups_ix: int = 0
 
     float_inc: float = 0.1

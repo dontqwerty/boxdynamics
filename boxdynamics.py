@@ -2,7 +2,7 @@ import json
 import math
 import random
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import IntEnum, unique
 import logging
 from typing import Dict, List
 
@@ -20,6 +20,7 @@ from boxui import BoxUI
 from boxutils import dataclass_to_dict, get_intersection, get_line_eq
 
 
+@unique
 class AgentHeadType(IntEnum):
     CENTER = 0
     EDGE = 1
