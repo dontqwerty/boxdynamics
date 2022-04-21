@@ -1,32 +1,20 @@
 import json
 import logging
 import math
-import random
-from dataclasses import is_dataclass
-from enum import IntEnum, unique
-from multiprocessing.connection import answer_challenge
 from time import sleep
-from typing import Dict, List
+from typing import List
 
 import numpy as np
 import pygame as pg
 from Box2D import b2Body, b2Vec2
-from scipy.fftpack import shift
 
 import boxcolors
 from boxdef import (BodyType, DesignData, EffectType, EffectWhen, EffectWho,
-                    ParamGroup, ScreenLayout, UIMode)
-from boxutils import (anglemag_to_vec, dataclass_to_dict, get_intersection,
-                      get_line_eq_angle, get_point_angle)
+                    ParamGroup, ScreenLayout, SetType, UIMode)
+from boxutils import (anglemag_to_vec, dataclass_to_dict, get_design_data,
+                      get_intersection, get_line_eq_angle, get_point_angle, copy_design_data, check_design_validity, toggle_enum)
 
 DESIGN_SLEEP = 0.001  # delay in seconds while designing world
-
-
-@unique
-class SetType(IntEnum):
-    DEFAULT = 0
-    PREVIOUS = 1
-    RANDOM = 2
 
 
 class BoxUI():
@@ -44,7 +32,7 @@ class BoxUI():
         self.design_bodies: List[DesignData] = list()
 
         # setting up design variables
-        self.design_data = self.get_design_data(set_type=SetType.DEFAULT)
+        self.design_data = get_design_data(set_type=SetType.DEFAULT)
         self.design_bodies.append(self.design_data)
         # TODO: include in config
         # self.set_type = SetType.DEFAULT
@@ -199,99 +187,6 @@ class BoxUI():
         b2Vec2(text_surface.get_size())
         self.screen.blit(text_surface, pos)
 
-    def copy_design_data(self, design: DesignData):
-        design_dict: Dict[str,
-                          DesignData] = design.__dict__  # pointer
-        design_data: Dict[str, DesignData] = dict()
-
-        # checking for fields that need to be copied manually
-        for key in list(design_dict.keys()):
-            # b2Vec2
-            if type(design_dict[key]) is b2Vec2:
-                design_data[key] = (design_dict['key'].copy())
-            # list of b2Vec2
-            elif isinstance(design_dict[key], list) and all(isinstance(val, b2Vec2) for val in design_dict[key]):
-                design_data[key] = list()
-                for val in design_dict[key]:
-                    design_data[key].append(val.copy())
-            # dictionary
-            elif isinstance(design_dict[key], dict):
-                design_data[key] = design_dict[key].copy()
-            else:
-                design_data[key] = design_dict[key]
-        design_data = DesignData(**design_data)
-        return design_data
-
-    def copy_design_bodies(self, design_bodies):
-        design_copy = list()
-
-        for body in design_bodies:
-            if body.valid:
-                design_copy.append(self.copy_design_data(design=body))
-
-                # TODO: remove or make proper function
-                assert design_copy[-1] == body and "Must equal"
-                design_copy[-1].points[0].x += 1
-                assert design_copy != body and "Must differ"
-                design_copy[-1].points[0].x -= 1
-                assert design_copy[-1] == body and "Must equal 2"
-
-        return design_copy
-
-    def get_effect(self, type: EffectType, param_0=0.0, param_1=0.0, who=EffectWho.AGENT, when=EffectWhen.DURING_CONTACT):
-        # TODO: angle in degrees not radians
-        effect = {"type": type, "who": who, "when": when,
-                  "param_0": param_0, "param_1": param_1}
-        return effect
-
-    def get_design_data(self, set_type=SetType.DEFAULT):
-        design_data = DesignData()
-        design_data.points = [None] * 2
-        design_data.vertices = [None] * 4
-
-        # use copiable data types
-        if set_type == SetType.DEFAULT:
-            design_data.physic = {"type": BodyType.STATIC_OBSTACLE,
-                                  "reward": 0.0,
-                                  "level": 0,
-                                  "lin_velocity": 10.0,
-                                  "lin_velocity_angle": 0.0,
-                                  "ang_velocity": 0.0,
-                                  "density": 1.0,
-                                  "inertia": 0.0,
-                                  "friction": 0.0,
-                                  "lin_damping": 0.0,
-                                  "ang_damping": 0.0}
-            design_data.effect = self.get_effect(EffectType.NONE)
-        elif set_type == SetType.PREVIOUS:
-            # indexes
-            design_data.param_group = self.design_data.param_group
-            design_data.physic_ix = self.design_data.physic_ix
-            design_data.effect_ix = self.design_data.effect_ix
-
-            design_data.physic = self.design_data.physic.copy()
-            design_data.effect = self.design_data.effect.copy()
-        elif set_type == SetType.RANDOM:
-            types = list(BodyType)
-            types.remove(BodyType.AGENT)
-            types.remove(BodyType.BORDER)
-            types.remove(BodyType.DEFAULT)
-            design_data.physic = {"type": random.choice(types),
-                                  "reward": random.uniform(-1, 1),
-                                  "level": 0,
-                                  "lin_velocity": random.uniform(0, 10),
-                                  "lin_velocity_angle": random.uniform(0, 2*math.pi),
-                                  "ang_velocity": random.uniform(-5, 5),
-                                  "density": 0.5,
-                                  # TODO: remove inertia
-                                  "inertia": 0,
-                                  "friction": random.uniform(0, 0.001),
-                                  "lin_damping": random.uniform(0, 0.001),
-                                  "ang_damping": random.uniform(0, 0.001)}
-            design_data.effect = self.get_effect(type=random.choice(list(EffectType)), param_0=random.uniform(0, 2*math.pi), param_1=random.uniform(-10000, 10000), who=random.choice(list(EffectWho)), when=random.choice(list(EffectWhen)))
-
-        return design_data
-
     def user_input(self):
         for event in pg.event.get():
             if event.type == pg.KEYDOWN:
@@ -397,11 +292,11 @@ class BoxUI():
                 elif event.key == pg.K_e:
                     if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # TODO: shift for reverse toggle
-                        self.design_data.param_group = self.toggle_enum(self.design_data.param_group, skip=[], increase=self.shift_pressed)
+                        self.design_data.param_group = toggle_enum(self.design_data.param_group, skip=[], increase=self.shift_pressed)
                         pass
                 elif event.key == pg.K_n:
                     if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
-                        self.set_type = self.toggle_enum(self.set_type, skip=[], increase=self.shift_pressed)
+                        self.set_type = toggle_enum(self.set_type, skip=[], increase=self.shift_pressed)
                         pass
                     pass
                 elif event.key == pg.K_UP:
@@ -491,27 +386,6 @@ class BoxUI():
     def second_exists(self):
         return self.design_data.points[1] is not None
 
-    def toggle_design_body(self):
-        if len(self.design_bodies):
-            if self.shift_pressed == False:
-                inc = 1
-            else:
-                inc = -1
-            if self.design_data == self.design_bodies[self.design_body_ix]:
-                self.design_body_ix = (
-                    self.design_body_ix + inc) % len(self.design_bodies)
-            self.design_data = self.design_bodies[self.design_body_ix]
-            # self.design_data.points[1] = b2Vec2(pg.mouse.get_pos())
-
-    def check_design_validity(self, design: DesignData):
-        # TODO: add other checks (?)
-        if all(v is not None for v in design.vertices):
-            # checking for vertices
-            return True
-        else:
-            logging.warning("Invalid design {}".format(design))
-            return False
-
     def set_points(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
         if not self.first_exists():
@@ -521,15 +395,54 @@ class BoxUI():
             # setting second body point and
             # getting ready for new design
             self.design_data.points[1] = mouse_pos
-            self.design_data.valid = self.check_design_validity(self.design_data)
+            self.design_data.valid = check_design_validity(self.design_data)
             # removing design pointer
             self.design_bodies.remove(self.design_data)
             # appending design copy
-            self.design_bodies.append(self.copy_design_data(self.design_data))
+            self.design_bodies.append(copy_design_data(self.design_data))
             self.new_design()
 
+    def save_design(self, filename):
+        dump_db = list()
+        for body in self.design_bodies:
+            if body.valid:
+                dump_db.append(dataclass_to_dict(body))
+        try:
+            with open(filename, "w") as f:
+                json.dump(dump_db, f)
+        except FileNotFoundError:
+            logging.info("File not found: {}".format(filename))
+            return
+
+        logging.info("Saved design {}".format(filename))
+
+    def load_design(self, filename):
+        # TODO: bugfix when after loading design
+        # and changing loaded bodies
+        # the angle changes by 90 deg when creating objects
+        try:
+            with open(filename, "r") as f:
+                loaded_db = json.load(f)
+        except FileNotFoundError:
+            logging.info("File not found: {}".format(filename))
+            return
+
+        # TODO: append to existing design or overwrite?
+        # currently appending
+        for body in loaded_db:
+            design = DesignData(**body)
+            design.points = [b2Vec2(p) for p in design.points]
+            design.vertices = [b2Vec2(p) for p in design.vertices]
+            design.physic["type"] = BodyType(design.physic["type"])
+            design.effect["type"] = EffectType(design.effect["type"])
+            design.effect["who"] = EffectWho(design.effect["who"])
+            design.effect["when"] = EffectWhen(design.effect["when"])
+            self.design_bodies.append(design)
+
+        logging.info("Loaded design {}".format(filename))
+
     def new_design(self):
-        self.design_data = self.get_design_data(set_type=self.set_type)
+        self.design_data = get_design_data(set_type=self.set_type, current_design=self.design_data)
         self.design_bodies.append(self.design_data)
 
     def edit_design(self, design: DesignData):
@@ -685,6 +598,79 @@ class BoxUI():
             self.design_data.points[1] = self.design_data.points[0] + \
                 anglemag_to_vec(angle=diagonal_angle, magnitude=diagonal)
 
+    def modify_param(self, increase=True):
+        if self.design_data.param_group == ParamGroup.PHYSIC:
+            # currently changin parameters
+            name = list(self.design_data.physic)[self.design_data.physic_ix]
+            if name == "type":
+                self.toggle_body_type(increase)
+            elif name == "level":
+                if increase:
+                    self.design_data.physic[name] += 1
+                else:
+                    self.design_data.physic[name] -= 1
+            else:
+                if increase:
+                    self.design_data.physic[name] += self.design_data.float_inc
+                else:
+                    self.design_data.physic[name] -= self.design_data.float_inc
+        # TODO: could be more than two groups!!
+        elif self.design_data.param_group == ParamGroup.EFFECT:
+            name = list(self.design_data.effect)[self.design_data.effect_ix]
+            if name in ("type", "who", "when"):
+                self.design_data.effect[name] = toggle_enum(
+                    self.design_data.effect[name], [], increase)
+            else:
+                if increase:
+                    self.design_data.effect[name] += self.design_data.float_inc
+                else:
+                    self.design_data.effect[name] -= self.design_data.float_inc
+        pass
+
+    def toggle_design_body(self):
+        if len(self.design_bodies):
+            if self.shift_pressed == False:
+                inc = 1
+            else:
+                inc = -1
+            if self.design_data == self.design_bodies[self.design_body_ix]:
+                self.design_body_ix = (
+                    self.design_body_ix + inc) % len(self.design_bodies)
+            self.design_data = self.design_bodies[self.design_body_ix]
+            # self.design_data.points[1] = b2Vec2(pg.mouse.get_pos())
+
+    def toggle_body_type(self, increase=True):
+        self.design_data.physic["type"] = toggle_enum(
+            self.design_data.physic["type"], skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT], increase=increase)
+        self.design_data.color = self.env.get_data(
+            self.design_data.physic["type"]).color
+
+    def set_commands(self):
+        self.commands.clear()
+        # TODO: shift commands
+        if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+            self.commands = [{"key": "left click", "description": "fix point"},
+                             {"key": "right click", "description": "toggle body"},
+                             {"key": "A", "description": "rotate"},
+                             {"key": "M", "description": "move"},
+                             {"key": "U", "description": "use"},
+                             {"key": "S", "description": "save"},
+                             {"key": "L", "description": "load"},
+                             {"key": "SPACE", "description": "toggle parameter"},
+                             {"key": "(roll) UP",
+                              "description": "increase parameter"},
+                             {"key": "(roll) DOWN",
+                              "description": "decrease parameter"},
+                             {"key": "RIGHT", "description": "increase parameter inc"},
+                             {"key": "LEFT", "description": "decrease parameter inc"},
+                             {"key": "DEL", "description": "delete object"},
+                             {"key": "ESC", "description": "exit"}]
+        elif self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE, UIMode.QUIT_CONFIRMATION, UIMode.USE_CONFIRMATION):
+            self.commands = [{"key": "ENTER", "description": "confirm"},
+                             {"key": "ESC", "description": "cancel"}]
+        elif self.mode == UIMode.SIMULATION:
+            self.commands = [{"key": "M", "description": "manual"}]
+
     def toggle_param(self):
         if self.shift_pressed == False:
             inc = 1
@@ -731,80 +717,6 @@ class BoxUI():
         else:
             assert False and "Unknown parameters group"
 
-    def modify_param(self, increase=True):
-        if self.design_data.param_group == ParamGroup.PHYSIC:
-            # currently changin parameters
-            name = list(self.design_data.physic)[self.design_data.physic_ix]
-            if name == "type":
-                self.toggle_body_type(increase)
-            elif name == "level":
-                if increase:
-                    self.design_data.physic[name] += 1
-                else:
-                    self.design_data.physic[name] -= 1
-            else:
-                if increase:
-                    self.design_data.physic[name] += self.design_data.float_inc
-                else:
-                    self.design_data.physic[name] -= self.design_data.float_inc
-        # TODO: could be more than two groups!!
-        elif self.design_data.param_group == ParamGroup.EFFECT:
-            name = list(self.design_data.effect)[self.design_data.effect_ix]
-            if name in ("type", "who", "when"):
-                self.design_data.effect[name] = self.toggle_enum(
-                    self.design_data.effect[name], [], increase)
-            else:
-                if increase:
-                    self.design_data.effect[name] += self.design_data.float_inc
-                else:
-                    self.design_data.effect[name] -= self.design_data.float_inc
-        pass
-
-    def toggle_body_type(self, increase=True):
-        self.design_data.physic["type"] = self.toggle_enum(
-            self.design_data.physic["type"], skip=[BodyType.AGENT, BodyType.BORDER, BodyType.DEFAULT], increase=increase)
-        self.design_data.color = self.env.get_data(
-            self.design_data.physic["type"]).color
-
-    def save_design(self, filename):
-        dump_db = list()
-        for body in self.design_bodies:
-            if body.valid:
-                dump_db.append(dataclass_to_dict(body))
-        try:
-            with open(filename, "w") as f:
-                json.dump(dump_db, f)
-        except FileNotFoundError:
-            logging.info("File not found: {}".format(filename))
-            return
-
-        logging.info("Saved design {}".format(filename))
-
-    def load_design(self, filename):
-        # TODO: bugfix when after loading design
-        # and changing loaded bodies
-        # the angle changes by 90 deg when creating objects
-        try:
-            with open(filename, "r") as f:
-                loaded_db = json.load(f)
-        except FileNotFoundError:
-            logging.info("File not found: {}".format(filename))
-            return
-
-        # TODO: append to existing design or overwrite?
-        # currently appending
-        for body in loaded_db:
-            design = DesignData(**body)
-            design.points = [b2Vec2(p) for p in design.points]
-            design.vertices = [b2Vec2(p) for p in design.vertices]
-            design.physic["type"] = BodyType(design.physic["type"])
-            design.effect["type"] = EffectType(design.effect["type"])
-            design.effect["who"] = EffectWho(design.effect["who"])
-            design.effect["when"] = EffectWhen(design.effect["when"])
-            self.design_bodies.append(design)
-
-        logging.info("Loaded design {}".format(filename))
-
     def get_angle(self, pivot: b2Vec2, point: b2Vec2):
         delta: b2Vec2 = point - pivot
         # first quadrant
@@ -837,20 +749,6 @@ class BoxUI():
             pass
 
         return angle
-
-    def toggle_enum(self, e, skip=[], increase=True):
-        enum_list = list(type(e))
-        if increase:
-            new_ix = (enum_list.index(e) + 1) % len(enum_list)
-        else:
-            new_ix = (enum_list.index(e) - 1) % len(enum_list)
-        new_e = enum_list[new_ix]
-
-        # TODO: check for undless loop
-        if new_e in skip:
-            new_e = self.toggle_enum(new_e, skip, increase)
-
-        return new_e
 
     def render_world(self):
         # Draw the world based on bodies levels
@@ -936,19 +834,6 @@ class BoxUI():
 
         self.render_design_data()
         self.render_effects()
-
-    def get_sorted_bodies(self, design=False):
-        # TODO: have them already sorted for performance
-        if design:
-            bodies_levels: List[tuple(DesignData, int)] = [[b, b.physic["level"]]
-                                                           for b in self.design_bodies]
-            bodies_levels.sort(key=lambda x: x[1], reverse=False)
-        else:
-            bodies_levels = [[b, b.userData.level]
-                             for b in self.env.world.bodies]
-            bodies_levels.sort(key=lambda x: x[1], reverse=False)
-
-        return [body[0] for body in bodies_levels]
 
     def render_design_data(self):
         # rendering design data when user is designin shape
@@ -1120,32 +1005,6 @@ class BoxUI():
 
         self.board_y_shift = pos.y
 
-    def set_commands(self):
-        self.commands.clear()
-        # TODO: shift commands
-        if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
-            self.commands = [{"key": "left click", "description": "fix point"},
-                             {"key": "right click", "description": "toggle body"},
-                             {"key": "A", "description": "rotate"},
-                             {"key": "M", "description": "move"},
-                             {"key": "U", "description": "use"},
-                             {"key": "S", "description": "save"},
-                             {"key": "L", "description": "load"},
-                             {"key": "SPACE", "description": "toggle parameter"},
-                             {"key": "(roll) UP",
-                              "description": "increase parameter"},
-                             {"key": "(roll) DOWN",
-                              "description": "decrease parameter"},
-                             {"key": "RIGHT", "description": "increase parameter inc"},
-                             {"key": "LEFT", "description": "decrease parameter inc"},
-                             {"key": "DEL", "description": "delete object"},
-                             {"key": "ESC", "description": "exit"}]
-        elif self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE, UIMode.QUIT_CONFIRMATION, UIMode.USE_CONFIRMATION):
-            self.commands = [{"key": "ENTER", "description": "confirm"},
-                             {"key": "ESC", "description": "cancel"}]
-        elif self.mode == UIMode.SIMULATION:
-            self.commands = [{"key": "M", "description": "manual"}]
-
     def render_action(self):
         p1 = self.__pg_coord(self.env.agent_head)
         p2 = self.__pg_coord(self.env.agent_head + self.env.action)
@@ -1184,6 +1043,21 @@ class BoxUI():
         # drawing text distances
         if self.env.cfg.render_distances:
             self.render_distances()
+
+
+    def get_sorted_bodies(self, design=False):
+        # TODO: have them already sorted for performance
+        if design:
+            bodies_levels: List[tuple(DesignData, int)] = [[b, b.physic["level"]]
+                                                           for b in self.design_bodies]
+            bodies_levels.sort(key=lambda x: x[1], reverse=False)
+        else:
+            bodies_levels = [[b, b.userData.level]
+                             for b in self.env.world.bodies]
+            bodies_levels.sort(key=lambda x: x[1], reverse=False)
+
+        return [body[0] for body in bodies_levels]
+
 
     # transform point in world coordinates to point in pg coordinates
     def __pg_coord(self, point):

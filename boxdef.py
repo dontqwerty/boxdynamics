@@ -97,6 +97,12 @@ class ScreenLayout:
     ndigits: int = 4
 
 @unique
+class SetType(IntEnum):
+    DEFAULT = 0
+    PREVIOUS = 1
+    RANDOM = 2
+
+@unique
 class ParamGroup(IntEnum):
     PHYSIC = 0
     EFFECT = 1

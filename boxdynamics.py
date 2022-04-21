@@ -17,7 +17,7 @@ from boxdef import (BodyType, BodyData, DesignData, EffectType, ScreenLayout,
                     UIMode)
 from boxraycast import RayCastClosestCallback
 from boxui import BoxUI
-from boxutils import anglemag_to_vec, dataclass_to_dict, get_intersection, get_line_eq
+from boxutils import anglemag_to_vec, dataclass_to_dict, get_intersection, get_line_eq, copy_design_bodies, get_effect
 
 
 @unique
@@ -279,7 +279,7 @@ class BoxEnv(gym.Env):
     # when finished it copies the created world
     # inside the self.cfg.design
     def world_design(self):
-        for design in self.ui.copy_design_bodies(self.cfg.design_bodies):
+        for design in copy_design_bodies(self.cfg.design_bodies):
             self.ui.design_bodies.append(design)
 
         self.ui.set_mode(UIMode.RESIZE)
@@ -288,7 +288,7 @@ class BoxEnv(gym.Env):
             self.ui.ui_sleep()
             self.render()
 
-        self.cfg.design_bodies = self.ui.copy_design_bodies(
+        self.cfg.design_bodies = copy_design_bodies(
             self.ui.design_bodies)
 
         self.create_bodies()
@@ -654,11 +654,11 @@ class BoxEnv(gym.Env):
 
     def get_border_data(self) -> BodyData:
         # todo border effect
-        effect = self.ui.get_effect(EffectType.NONE)
+        effect = get_effect(EffectType.NONE)
         return BodyData(type=BodyType.BORDER, color=color.BORDER, effect=effect)
 
     def get_agent_data(self) -> BodyData:
-        effect = self.ui.get_effect(EffectType.NONE)
+        effect = get_effect(EffectType.NONE)
         return BodyData(type=BodyType.AGENT, color=color.AGENT, level=np.inf, effect=effect)
 
     def get_static_obstacle_data(self) -> BodyData:
