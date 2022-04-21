@@ -7,14 +7,13 @@ from dataclasses import is_dataclass
 from enum import IntEnum, unique
 from time import sleep
 from typing import Dict, List
-from cv2 import norm
 
 import numpy as np
 import pygame as pg
 from Box2D import b2Body, b2Vec2
 
 import boxcolors
-from boxdef import (BodyType, DesignData, EffectType, EffectWhen, ScreenLayout,
+from boxdef import (BodyType, DesignData, EffectType, EffectWhen, EffectWho, ScreenLayout,
                     UIMode)
 from boxutils import dataclass_to_dict, get_intersection, get_line_eq_angle, get_point_angle
 
@@ -263,8 +262,8 @@ class BoxUI():
     #         assert False and "EffectType not supported"
     #     return l
 
-    def get_effect(self, type: EffectType, param_0=None, param_1=None, when=EffectWhen.DURING_CONTACT):
-        effect = {"type": type, "param_0": param_0, "param_1": param_1, "when": when}
+    def get_effect(self, type: EffectType, param_0=0.0, param_1=0.0, who=EffectWho.AGENT, when=EffectWhen.DURING_CONTACT):
+        effect = {"type": type, "who": who, "when": when, "param_0": param_0, "param_1": param_1}
         return effect
 
     def get_design_data(self, set_type=SetType.DEFAULT):
@@ -711,29 +710,77 @@ class BoxUI():
                     self.design_data.params_ix + inc) % 3
         elif self.design_data.groups[self.design_data.groups_ix] == self.design_data.effect:
             # we are toggling effect params
-            self.design_data.effect_ix = (
-                self.design_data.effect_ix + inc) % len(self.design_data.effect)
+            if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
+                                                    EffectType.SET_VELOCITY):
+                # all effect keys needed
+                self.design_data.effect_ix = (
+                    self.design_data.effect_ix + inc) % len(self.design_data.effect)
+            elif self.design_data.effect["type"] in (EffectType.SET_LIN_DAMP,
+                                                    EffectType.SET_ANG_DAMP,
+                                                    EffectType.SET_FRICTION,
+                                                    EffectType.SET_MAX_ACTION,
+                                                    EffectType.BOUNCE):
+                # key param_1 not needed
+                self.design_data.effect_ix = (
+                    self.design_data.effect_ix + inc) % (len(self.design_data.effect) - 1)
+            elif self.design_data.effect["type"] in (EffectType.DONE,
+                                                    EffectType.RESET,
+                                                    EffectType.INVERT_VELOCITY):
+                # keys param_0 and param_1 not needed
+                self.design_data.effect_ix = (
+                    self.design_data.effect_ix + inc) % (len(self.design_data.effect) - 2)
+            elif self.design_data.effect["type"] == EffectType.NONE:
+                # only key type needed
+                self.design_data.effect_ix = (self.design_data.effect_ix + inc) % 1
             pass
         else:
             assert False and "Added something to self.design_data.groups?"
 
+    # def modify_param(self, increase=True):
+    #     param_name = list(self.design_data.params)[self.design_data.params_ix]
+    #     if param_name == "type":
+    #         if increase:
+    #             self.toggle_body_type(increase)
+    #         else:
+    #             self.toggle_body_type(increase)
+    #     elif param_name == "level":
+    #         if increase:
+    #             self.design_data.params[param_name] += 1
+    #         else:
+    #             self.design_data.params[param_name] -= 1
+    #     else:
+    #         if increase:
+    #             self.design_data.params[param_name] += self.design_data.float_inc
+    #         else:
+    #             self.design_data.params[param_name] -= self.design_data.float_inc
+    #     pass
+
     def modify_param(self, increase=True):
-        param_name = list(self.design_data.params)[self.design_data.params_ix]
-        if param_name == "type":
-            if increase:
+        if self.design_data.groups[self.design_data.groups_ix] == self.design_data.params:
+            # currently changin parameters
+            name = list(self.design_data.params)[self.design_data.params_ix]
+            if name == "type":
                 self.toggle_body_type(increase)
+            elif name == "level":
+                if increase:
+                    self.design_data.params[name] += 1
+                else:
+                    self.design_data.params[name] -= 1
             else:
-                self.toggle_body_type(increase)
-        elif param_name == "level":
-            if increase:
-                self.design_data.params[param_name] += 1
-            else:
-                self.design_data.params[param_name] -= 1
+                if increase:
+                    self.design_data.params[name] += self.design_data.float_inc
+                else:
+                    self.design_data.params[name] -= self.design_data.float_inc
+        # TODO: could be more than two groups!!
         else:
-            if increase:
-                self.design_data.params[param_name] += self.design_data.float_inc
+            name = list(self.design_data.effect)[self.design_data.effect_ix]
+            if name in ("type", "who", "when"):
+                self.design_data.effect[name] = self.toggle_enum(self.design_data.effect[name], [], increase)
             else:
-                self.design_data.params[param_name] -= self.design_data.float_inc
+                if increase:
+                    self.design_data.effect[name] += self.design_data.float_inc
+                else:
+                    self.design_data.effect[name] -= self.design_data.float_inc
         pass
 
     def toggle_body_type(self, increase=True):
@@ -925,7 +972,7 @@ class BoxUI():
             self.font, self.layout.big_font)
 
         pos = b2Vec2(self.layout.border,
-                     self.board_y_shift + self.layout.border)
+                     self.board_y_shift + (2*self.layout.border))
 
         # title
         s = "DESIGN DATA"
@@ -1002,7 +1049,7 @@ class BoxUI():
             self.font, self.layout.big_font)
 
         pos = b2Vec2(self.layout.border,
-                     self.board_y_shift + self.layout.border)
+                     self.board_y_shift + (2*self.layout.border))
 
         # title
         s = "EFFECTS"
@@ -1013,7 +1060,31 @@ class BoxUI():
         text_font = pg.font.SysFont(
             self.font, self.layout.normal_font)
 
-        for ix, s in enumerate(self.design_data.effect):
+        effect = list()
+        effect.append("Type: {}".format(
+            EffectType(self.design_data.effect["type"]).name))
+
+        if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
+                                                EffectType.SET_VELOCITY):
+            effect.append("Who: {}".format(EffectWho(self.design_data.effect["who"]).name))
+            effect.append("When: {}".format(EffectWho(self.design_data.effect["when"]).name))
+            effect.append("Param A: {}".format(self.design_data.effect["param_0"]))
+            effect.append("Param B: {}".format(self.design_data.effect["param_1"]))
+        elif self.design_data.effect["type"] in (EffectType.SET_LIN_DAMP,
+                                                EffectType.SET_ANG_DAMP,
+                                                EffectType.SET_FRICTION,
+                                                EffectType.SET_MAX_ACTION,
+                                                EffectType.BOUNCE):
+            effect.append("Who: {}".format(EffectWho(self.design_data.effect["who"]).name))
+            effect.append("When: {}".format(EffectWhen(self.design_data.effect["when"]).name))
+            effect.append("Param A: {}".format(self.design_data.effect["param_0"]))
+        elif self.design_data.effect["type"] in (EffectType.DONE,
+                                                EffectType.RESET,
+                                                EffectType.INVERT_VELOCITY):
+            effect.append("Who: {}".format(EffectWho(self.design_data.effect["who"]).name))
+            effect.append("When: {}".format(EffectWhen(self.design_data.effect["when"]).name))
+
+        for ix, s in enumerate(effect):
             if self.design_data.groups[self.design_data.groups_ix] == self.design_data.effect and ix == self.design_data.effect_ix:
                 # highlight current param
                 back_color = boxcolors.GREEN
@@ -1021,11 +1092,12 @@ class BoxUI():
                 back_color = boxcolors.INFO_BACK
         
             pos += b2Vec2(0, text_surface.get_height())
+            s = "* {}".format(s)
 
-            if hasattr(self.design_data.effect[s], "name"):
-                s = "* {}: {}".format(s, self.design_data.effect[s].name)
-            else:
-                s = "* {}: {}".format(s, self.design_data.effect[s])
+            # if hasattr(self.design_data.effect[s], "name"):
+            #     s = "* {}: {}".format(s, self.design_data.effect[s].name)
+            # else:
+            #     s = "* {}: {}".format(s, self.design_data.effect[s])
                 
             text_surface = text_font.render(s, True, boxcolors.BLACK, back_color)
             self.screen.blit(text_surface, pos)

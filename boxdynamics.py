@@ -344,7 +344,7 @@ class BoxEnv(gym.Env):
         elif type == BodyType.DYNAMIC_ZONE:
             body = self.create_dynamic_zone(pos, size, angle=angle)
             self.set_body_params(body, design_data)
-        elif type == BodyType.KINEMATIC_OBSTACLE:
+        elif type == BodyType.KINEMATIC_ZONE:
             body = self.create_kinematic_zone(pos, size, angle=angle)
             self.set_body_params(body, design_data)
         else:

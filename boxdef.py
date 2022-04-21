@@ -26,21 +26,24 @@ class EffectWhen(IntEnum):
     OFF_CONTACT = 2
 
 @unique
+class EffectWho(IntEnum):
+    AGENT = 0
+    OTHER = 1
+    BOTH = 2
+
+@unique
 class EffectType(IntEnum):
-    # params: mag, angle
-    SET_VELOCITY = 0  # sets given body variable
-    APPLY_FORCE = 1
-    # params: coeff
-    SET_LIN_DAMP = 6
-    SET_ANG_DAMP = 7
-    SET_FRICTION = 8
-    SET_MAX_ACTION = 9
-    BOUNCE = 10
-    # params: none
-    NONE = 5
-    DONE = 2  # TODO: sets self.done in BoxEnv to True
-    RESET = 3  # TODO: calls BoxEnv().reset()
-    INVERT_VELOCITY = 4
+    NONE = 5 # params: none
+    BOUNCE = 10 # params: coeff
+    INVERT_VELOCITY = 4 # params: none
+    SET_VELOCITY = 0  # sets given body variable # params: mag, angle
+    APPLY_FORCE = 1 # params: mag, angle
+    SET_LIN_DAMP = 6 # params: coeff
+    SET_ANG_DAMP = 7 # params: coeff
+    SET_FRICTION = 8 # params: coeff
+    SET_MAX_ACTION = 9 # params: coeff
+    DONE = 2  # TODO: sets self.done in BoxEnv to True # params: none
+    RESET = 3  # TODO: calls BoxEnv().reset() # params: none
 
 
 @unique
