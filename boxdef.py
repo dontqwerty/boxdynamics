@@ -60,6 +60,7 @@ class UIMode(IntEnum):
     INPUT_LOAD = 5
     QUIT_CONFIRMATION = 6
     USE_CONFIRMATION = 7
+    SELECT = 9
 
 
 @dataclass

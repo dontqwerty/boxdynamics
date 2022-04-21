@@ -18,8 +18,6 @@ class ContactListener(b2ContactListener):
         # keeping track of which body is in touch with others
         self.add_contact(contact)
 
-        print(contact.fixtureA.body.userData.type,
-              contact.fixtureB.body.userData.type)
         # performing bodyA effect
         self.contact_effect(contact.fixtureA.body,
                             contact.fixtureB.body, EffectWhen.ON_CONTACT)
@@ -73,9 +71,6 @@ class ContactListener(b2ContactListener):
         effect_typeA = dataA.effect["type"]
         effect_whoA = dataA.effect["who"]
         effect_whenA = dataA.effect["when"]
-        # effect_typeB = dataB.effect["type"]
-        # effect_whoB = dataB.effect["who"]
-        # effect_whenB = dataB.effect["when"]
 
         # checking effect when
         if effect_whenA == when:
@@ -86,6 +81,7 @@ class ContactListener(b2ContactListener):
                 param_0 = dataA.effect["param_0"]
                 param_1 = dataA.effect["param_1"]
                 # performing fixtureA effect
+                logging.debug("perfmorming effect {}".format(effect_typeA.name))
                 if effect_typeA == EffectType.NONE:
                     pass
                 elif effect_typeA == EffectType.APPLY_FORCE:

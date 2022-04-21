@@ -102,8 +102,9 @@ class Observation:
 
 class BoxEnv(gym.Env):
     def __init__(self) -> None:
+        # TODO: logging level in config file
         logging.basicConfig(
-            format='%(levelname)s: %(asctime)s: %(message)s', level=logging.INFO)
+            format='%(levelname)s: %(asctime)s: %(message)s', level=logging.DEBUG)
 
         # initializing base class
         super(BoxEnv, self).__init__()

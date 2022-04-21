@@ -46,8 +46,8 @@ class BoxUI():
         self.design_bodies.append(self.design_data)
         # TODO: include in config
         # self.set_type = SetType.DEFAULT
-        self.set_type = SetType.PREVIOUS
-        # self.set_type = SetType.RANDOM
+        # self.set_type = SetType.PREVIOUS
+        self.set_type = SetType.RANDOM
 
         # pygame setup
         pg.init()
@@ -128,7 +128,8 @@ class BoxUI():
         if self.mode == UIMode.SIMULATION or (self.prev_mode == UIMode.SIMULATION and self.mode == UIMode.QUIT_CONFIRMATION):
             self.render_action()
             self.render_observations()
-        if self.mode in (UIMode.RESIZE,
+        if self.mode in (UIMode.SELECT,
+                         UIMode.RESIZE,
                          UIMode.MOVE,
                          UIMode.ROTATE,
                          UIMode.INPUT_LOAD,
@@ -236,6 +237,7 @@ class BoxUI():
         return design_copy
 
     def get_effect(self, type: EffectType, param_0=0.0, param_1=0.0, who=EffectWho.AGENT, when=EffectWhen.DURING_CONTACT):
+        # TODO: angle in degrees not radians
         effect = {"type": type, "who": who, "when": when,
                   "param_0": param_0, "param_1": param_1}
         return effect
@@ -284,8 +286,7 @@ class BoxUI():
                                   "friction": random.uniform(0, 0.001),
                                   "lin_damping": random.uniform(0, 0.001),
                                   "ang_damping": random.uniform(0, 0.001)}
-            # TODO: random effect
-            design_data.effect = self.get_effect(EffectType.NONE)
+            design_data.effect = self.get_effect(type=random.choice(list(EffectType)), param_0=random.uniform(0, 2*math.pi), param_1=random.uniform(-10000, 10000), who=random.choice(list(EffectWho)), when=random.choice(list(EffectWhen)))
 
         design_data.groups = [design_data.params, design_data.effect]
         return design_data
@@ -329,6 +330,8 @@ class BoxUI():
                     elif self.mode == UIMode.USE_CONFIRMATION:
                         # use confirmed
                         self.set_mode(UIMode.SIMULATION)
+                    elif self.mode == UIMode.SELECT:
+                        self.set_mode(UIMode.RESIZE)
 
                 elif event.type == pg.QUIT:
                     # exit
@@ -354,21 +357,21 @@ class BoxUI():
                     self.shift_pressed = True
                     pass
                 elif event.key == pg.K_s:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # asking to input file name
                         self.set_mode(UIMode.INPUT_SAVE)
                     pass
                 elif event.key == pg.K_l:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         self.set_mode(UIMode.INPUT_LOAD)
                     pass
                 elif event.key == pg.K_u:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # use created world
                         self.set_mode(UIMode.USE_CONFIRMATION)
                     pass
                 elif event.key == pg.K_m:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE):
                         # moving body
                         points_num = len(self.design_data.points)
                         if points_num == 2:
@@ -381,7 +384,7 @@ class BoxUI():
                     pass
                     pass
                 elif event.key == pg.K_a:
-                    if self.mode in (UIMode.RESIZE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.MOVE):
                         # rotating body
                         points_num = len(self.design_data.points)
                         if points_num == 2:
@@ -391,34 +394,34 @@ class BoxUI():
                         self.set_mode(UIMode.RESIZE)
                     pass
                 elif event.key == pg.K_e:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # TODO: shift for reverse toggle
                         self.design_data.groups_ix = (
                             self.design_data.groups_ix + 1) % len(self.design_data.groups)
                         pass
                     pass
                 elif event.key == pg.K_UP:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase currently selected param
                         self.modify_param(increase=True)
                     pass
                 elif event.key == pg.K_DOWN:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # decrease currently selected param
                         self.modify_param(increase=False)
                     pass
                 elif event.key == pg.K_RIGHT:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase inc by factor 10
                         self.design_data.float_inc = self.design_data.float_inc * 10
                     pass
                 elif event.key == pg.K_LEFT:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # decrease inc by factor 10
                         self.design_data.float_inc = self.design_data.float_inc / 10
                     pass
                 elif event.key == pg.K_SPACE:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # toggle parameter to change
                         self.toggle_param()
                     pass
@@ -444,18 +447,18 @@ class BoxUI():
                     # toggles between already created design bodies
                     # in order to modify them
                     # TODO: make it better
-                    if self.mode in (UIMode.ROTATE, UIMode.MOVE, UIMode.RESIZE):
+                    if self.mode in (UIMode.SELECT, UIMode.ROTATE, UIMode.MOVE, UIMode.RESIZE):
                         self.toggle_design_body()
-                        if self.mode != UIMode.RESIZE:
-                            self.set_mode(UIMode.RESIZE)
+                        if self.mode != UIMode.SELECT:
+                            self.set_mode(UIMode.SELECT)
                 # 4 - scroll up
                 elif event.button == 4:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase currently selected param
                         self.modify_param(increase=True)
                 # 5 - scroll down
                 elif event.button == 5:
-                    if self.mode in (UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # increase currently selected param
                         self.modify_param(increase=False)
                 pass
@@ -494,6 +497,7 @@ class BoxUI():
                 self.design_body_ix = (
                     self.design_body_ix + inc) % len(self.design_bodies)
             self.design_data = self.design_bodies[self.design_body_ix]
+            # self.design_data.points[1] = b2Vec2(pg.mouse.get_pos())
 
     def set_points(self):
         mouse_pos = b2Vec2(pg.mouse.get_pos())
@@ -1061,12 +1065,12 @@ class BoxUI():
             if self.design_data.groups_ix == 1 and ix == self.design_data.effect_ix:
                 # highlight current param
                 back_color = boxcolors.GREEN
+                s = "* {}".format(s)
             else:
                 back_color = boxcolors.INFO_BACK
+                s = "- {}".format(s)
 
             pos += b2Vec2(0, text_surface.get_height())
-            s = "* {}".format(s)
-
             text_surface = text_font.render(
                 s, True, boxcolors.BLACK, back_color)
             self.screen.blit(text_surface, pos)
@@ -1118,7 +1122,7 @@ class BoxUI():
                              {"key": "DEL", "description": "delete object"},
                              {"key": "ESC", "description": "exit"}]
         elif self.mode in (UIMode.INPUT_LOAD, UIMode.INPUT_SAVE, UIMode.QUIT_CONFIRMATION, UIMode.USE_CONFIRMATION):
-            self.commands = [{"key": "ENTER", "description": "go"},
+            self.commands = [{"key": "ENTER", "description": "confirm"},
                              {"key": "ESC", "description": "cancel"}]
         elif self.mode == UIMode.SIMULATION:
             self.commands = [{"key": "M", "description": "manual"}]
