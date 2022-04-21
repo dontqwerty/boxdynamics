@@ -59,6 +59,7 @@ class ScreenLayout:
         width - simulation_xshift, height - simulation_yshift)
     board_pos: b2Vec2 = b2Vec2(0, simulation_size.y)
     popup_pos: b2Vec2 = (b2Vec2(width, height) - popup_size / 2) / 2
+    ndigits: int = 4
 
 
 @dataclass

@@ -910,7 +910,7 @@ class BoxUI():
         params.append("Type: {}".format(
             BodyType(self.design_data.params["type"]).name))
         params.append("Reward: {}".format(
-            round(self.design_data.params["reward"], 3)))
+            round(self.design_data.params["reward"], self.layout.ndigits)))
         params.append("Level: {}".format(
             round(self.design_data.params["level"])))
 
@@ -919,21 +919,21 @@ class BoxUI():
                                                 BodyType.KINEMATIC_OBSTACLE,
                                                 BodyType.KINEMATIC_ZONE):
             params.append("Velocity: {}".format(
-                round(self.design_data.params["lin_velocity"], 3)))
+                round(self.design_data.params["lin_velocity"], self.layout.ndigits)))
             params.append("Velocity angle: {}".format(
-                round(self.design_data.params["lin_velocity_angle"], 3)))
+                round(self.design_data.params["lin_velocity_angle"], self.layout.ndigits)))
             params.append("Angular velocity: {}".format(
-                round(self.design_data.params["ang_velocity"], 3)))
+                round(self.design_data.params["ang_velocity"], self.layout.ndigits)))
             params.append("Density: {}".format(
-                round(self.design_data.params["density"], 3)))
+                round(self.design_data.params["density"], self.layout.ndigits)))
             params.append("Inertia: {}".format(
-                round(self.design_data.params["inertia"], 3)),)
+                round(self.design_data.params["inertia"], self.layout.ndigits)),)
             params.append("Friction: {}".format(
-                round(self.design_data.params["friction"], 3)))
+                round(self.design_data.params["friction"], self.layout.ndigits)))
             params.append("Linear damping: {}".format(
-                round(self.design_data.params["lin_damping"], 3)))
+                round(self.design_data.params["lin_damping"], self.layout.ndigits)))
             params.append("Angular damping: {}".format(
-                round(self.design_data.params["ang_damping"], 3)))
+                round(self.design_data.params["ang_damping"], self.layout.ndigits)))
 
         # increment always as last parameter
         params.append("Increment: {}".format((self.design_data.float_inc)))
@@ -946,8 +946,10 @@ class BoxUI():
                     "* {}".format(s), True, boxcolors.BLACK, boxcolors.GREEN)
             else:
                 text_surface = text_font.render(
-                    s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
+                    "- {}".format(s), True, boxcolors.BLACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
+
+        effects = list()
 
         self.board_y_shift = pos.y
 
