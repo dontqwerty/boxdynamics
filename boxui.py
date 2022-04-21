@@ -46,8 +46,8 @@ class BoxUI():
         self.design_bodies.append(self.design_data)
         # TODO: include in config
         # self.set_type = SetType.DEFAULT
-        self.set_type = SetType.PREVIOUS
-        # self.set_type = SetType.RANDOM
+        # self.set_type = SetType.PREVIOUS
+        self.set_type = SetType.RANDOM
 
         # pygame setup
         pg.init()
@@ -295,6 +295,9 @@ class BoxUI():
             design_data.effect = self.design_data.effect.copy()
         elif set_type == SetType.RANDOM:
             types = list(BodyType)
+            types.remove(BodyType.AGENT)
+            types.remove(BodyType.BORDER)
+            types.remove(BodyType.DEFAULT)
             design_data.params = {"type": random.choice(types),
                                   "reward": random.uniform(-1, 1),
                                   "level": 0,
@@ -696,7 +699,7 @@ class BoxUI():
             inc = 1
         else:
             inc = -1
-        if self.design_data.groups[self.design_data.groups_ix] == self.design_data.params:
+        if self.design_data.groups_ix == 0:
             # we are toggling design params
             if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
                                                    BodyType.DYNAMIC_ZONE,
@@ -708,7 +711,7 @@ class BoxUI():
                 # TODO: only toggle static bodies params not hardcoded
                 self.design_data.params_ix = (
                     self.design_data.params_ix + inc) % 3
-        elif self.design_data.groups[self.design_data.groups_ix] == self.design_data.effect:
+        elif self.design_data.groups_ix == 1:
             # we are toggling effect params
             if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
                                                     EffectType.SET_VELOCITY):
@@ -756,7 +759,7 @@ class BoxUI():
     #     pass
 
     def modify_param(self, increase=True):
-        if self.design_data.groups[self.design_data.groups_ix] == self.design_data.params:
+        if self.design_data.groups_ix == 0:
             # currently changin parameters
             name = list(self.design_data.params)[self.design_data.params_ix]
             if name == "type":
@@ -772,7 +775,7 @@ class BoxUI():
                 else:
                     self.design_data.params[name] -= self.design_data.float_inc
         # TODO: could be more than two groups!!
-        else:
+        elif self.design_data.groups_ix == 1:
             name = list(self.design_data.effect)[self.design_data.effect_ix]
             if name in ("type", "who", "when"):
                 self.design_data.effect[name] = self.toggle_enum(self.design_data.effect[name], [], increase)
@@ -1032,7 +1035,7 @@ class BoxUI():
 
         for ix, s in enumerate(params):
             pos += b2Vec2(0, text_surface.get_height())
-            if self.design_data.groups[self.design_data.groups_ix] == self.design_data.params and ix == self.design_data.params_ix:
+            if self.design_data.groups_ix == 0 and ix == self.design_data.params_ix:
                 # highlight current param
                 text_surface = text_font.render(
                     "* {}".format(s), True, boxcolors.BLACK, boxcolors.GREEN)
@@ -1085,7 +1088,7 @@ class BoxUI():
             effect.append("When: {}".format(EffectWhen(self.design_data.effect["when"]).name))
 
         for ix, s in enumerate(effect):
-            if self.design_data.groups[self.design_data.groups_ix] == self.design_data.effect and ix == self.design_data.effect_ix:
+            if self.design_data.groups_ix == 1 and ix == self.design_data.effect_ix:
                 # highlight current param
                 back_color = boxcolors.GREEN
             else:
