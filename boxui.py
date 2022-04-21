@@ -235,33 +235,6 @@ class BoxUI():
 
         return design_copy
 
-    # def get_effect_params_len(self, type: EffectType):
-    #     if type == EffectType.NONE:
-    #         l = 0
-    #     elif type == EffectType.APPLY_FORCE:
-    #         l = 2
-    #     elif type == EffectType.BOUNCE:
-    #         l = 1
-    #     elif type == EffectType.DONE:
-    #         l = 0
-    #     elif type == EffectType.INVERT_VELOCITY:
-    #         l = 1
-    #     elif type == EffectType.RESET:
-    #         l = 0
-    #     elif type == EffectType.SET_ANG_DAMP:
-    #         l = 1
-    #     elif type == EffectType.SET_LIN_DAMP:
-    #         l = 1
-    #     elif type == EffectType.SET_MAX_ACTION:
-    #         l = 1
-    #     elif type == EffectType.SET_VELOCITY:
-    #         l = 2
-    #     elif type == EffectType.SET_FRICTION:
-    #         l = 1
-    #     else:
-    #         assert False and "EffectType not supported"
-    #     return l
-
     def get_effect(self, type: EffectType, param_0=0.0, param_1=0.0, who=EffectWho.AGENT, when=EffectWhen.DURING_CONTACT):
         effect = {"type": type, "who": who, "when": when,
                   "param_0": param_0, "param_1": param_1}
@@ -740,25 +713,6 @@ class BoxUI():
             pass
         else:
             assert False and "Added something to self.design_data.groups?"
-
-    # def modify_param(self, increase=True):
-    #     param_name = list(self.design_data.params)[self.design_data.params_ix]
-    #     if param_name == "type":
-    #         if increase:
-    #             self.toggle_body_type(increase)
-    #         else:
-    #             self.toggle_body_type(increase)
-    #     elif param_name == "level":
-    #         if increase:
-    #             self.design_data.params[param_name] += 1
-    #         else:
-    #             self.design_data.params[param_name] -= 1
-    #     else:
-    #         if increase:
-    #             self.design_data.params[param_name] += self.design_data.float_inc
-    #         else:
-    #             self.design_data.params[param_name] -= self.design_data.float_inc
-    #     pass
 
     def modify_param(self, increase=True):
         if self.design_data.groups_ix == 0:

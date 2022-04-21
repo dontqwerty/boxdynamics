@@ -39,8 +39,8 @@ class EffectType(IntEnum):
     NONE = 5  # params: none
     BOUNCE = 10  # params: coeff
     INVERT_VELOCITY = 4  # params: none
-    SET_VELOCITY = 0  # sets given body variable # params: mag, angle
-    APPLY_FORCE = 1  # params: mag, angle
+    SET_VELOCITY = 0  # sets given body variable # params: angle, mag
+    APPLY_FORCE = 1  # params: angle, mag
     SET_LIN_DAMP = 6  # params: coeff
     SET_ANG_DAMP = 7  # params: coeff
     SET_FRICTION = 8  # params: coeff
