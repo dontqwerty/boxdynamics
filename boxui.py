@@ -1,21 +1,23 @@
 import json
 import logging
 import math
-from multiprocessing.connection import answer_challenge
 import random
 from dataclasses import is_dataclass
 from enum import IntEnum, unique
+from multiprocessing.connection import answer_challenge
 from time import sleep
 from typing import Dict, List
 
 import numpy as np
 import pygame as pg
 from Box2D import b2Body, b2Vec2
+from scipy.fftpack import shift
 
 import boxcolors
-from boxdef import (BodyType, DesignData, EffectType, EffectWhen, EffectWho, ScreenLayout,
-                    UIMode)
-from boxutils import anglemag_to_vec, dataclass_to_dict, get_intersection, get_line_eq_angle, get_point_angle
+from boxdef import (BodyType, DesignData, EffectType, EffectWhen, EffectWho,
+                    ParamGroup, ScreenLayout, UIMode)
+from boxutils import (anglemag_to_vec, dataclass_to_dict, get_intersection,
+                      get_line_eq_angle, get_point_angle)
 
 DESIGN_SLEEP = 0.001  # delay in seconds while designing world
 
@@ -263,7 +265,7 @@ class BoxUI():
             design_data.effect = self.get_effect(EffectType.NONE)
         elif set_type == SetType.PREVIOUS:
             # indexes
-            design_data.groups_ix = self.design_data.groups_ix
+            design_data.param_group = self.design_data.param_group
             design_data.params_ix = self.design_data.params_ix
             design_data.effect_ix = self.design_data.effect_ix
 
@@ -288,7 +290,6 @@ class BoxUI():
                                   "ang_damping": random.uniform(0, 0.001)}
             design_data.effect = self.get_effect(type=random.choice(list(EffectType)), param_0=random.uniform(0, 2*math.pi), param_1=random.uniform(-10000, 10000), who=random.choice(list(EffectWho)), when=random.choice(list(EffectWhen)))
 
-        design_data.groups = [design_data.params, design_data.effect]
         return design_data
 
     def user_input(self):
@@ -396,8 +397,11 @@ class BoxUI():
                 elif event.key == pg.K_e:
                     if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
                         # TODO: shift for reverse toggle
-                        self.design_data.groups_ix = (
-                            self.design_data.groups_ix + 1) % len(self.design_data.groups)
+                        self.design_data.param_group = self.toggle_enum(self.design_data.param_group, skip=[], increase=self.shift_pressed)
+                        pass
+                elif event.key == pg.K_n:
+                    if self.mode in (UIMode.SELECT, UIMode.RESIZE, UIMode.ROTATE, UIMode.MOVE):
+                        self.set_type = self.toggle_enum(self.set_type, skip=[], increase=self.shift_pressed)
                         pass
                     pass
                 elif event.key == pg.K_UP:
@@ -677,7 +681,7 @@ class BoxUI():
             inc = 1
         else:
             inc = -1
-        if self.design_data.groups_ix == 0:
+        if self.design_data.param_group == ParamGroup.PHYSIC:
             # we are toggling design params
             if self.design_data.params["type"] in (BodyType.DYNAMIC_OBSTACLE,
                                                    BodyType.DYNAMIC_ZONE,
@@ -689,7 +693,7 @@ class BoxUI():
                 # TODO: only toggle static bodies params not hardcoded
                 self.design_data.params_ix = (
                     self.design_data.params_ix + inc) % 3
-        elif self.design_data.groups_ix == 1:
+        elif self.design_data.param_group == ParamGroup.EFFECT:
             # we are toggling effect params
             if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
                                                    EffectType.SET_VELOCITY):
@@ -716,10 +720,10 @@ class BoxUI():
                     self.design_data.effect_ix + inc) % 1
             pass
         else:
-            assert False and "Added something to self.design_data.groups?"
+            assert False and "Unknown parameters group"
 
     def modify_param(self, increase=True):
-        if self.design_data.groups_ix == 0:
+        if self.design_data.param_group == ParamGroup.PHYSIC:
             # currently changin parameters
             name = list(self.design_data.params)[self.design_data.params_ix]
             if name == "type":
@@ -735,7 +739,7 @@ class BoxUI():
                 else:
                     self.design_data.params[name] -= self.design_data.float_inc
         # TODO: could be more than two groups!!
-        elif self.design_data.groups_ix == 1:
+        elif self.design_data.param_group == ParamGroup.EFFECT:
             name = list(self.design_data.effect)[self.design_data.effect_ix]
             if name in ("type", "who", "when"):
                 self.design_data.effect[name] = self.toggle_enum(
@@ -768,6 +772,9 @@ class BoxUI():
         logging.info("Saved design {}".format(filename))
 
     def load_design(self, filename):
+        # TODO: bugfix when after loading design
+        # and changing loaded bodies
+        # the angle changes by 90 deg when creating objects
         try:
             with open(filename, "r") as f:
                 loaded_db = json.load(f)
@@ -952,8 +959,9 @@ class BoxUI():
             self.font, self.layout.normal_font)
 
         # data can't be toggled like params
-        data = ["Angle: {}".format(
-            round(-360 * self.design_data.angle / (2 * math.pi), 3))]
+        data = ["Next: {}".format(self.set_type.name),
+                "Angle: {}".format(
+                round(-360 * self.design_data.angle / (2 * math.pi), 3))]
 
         for ix, s in enumerate(data):
             pos += b2Vec2(0, text_surface.get_height())
@@ -966,6 +974,8 @@ class BoxUI():
                     s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
             self.screen.blit(text_surface, pos)
 
+        # NOTICE: parameters must be in the same order as
+        # when initialized in 
         params = list()
         params.append("Type: {}".format(
             BodyType(self.design_data.params["type"]).name))
@@ -1000,7 +1010,7 @@ class BoxUI():
 
         for ix, s in enumerate(params):
             pos += b2Vec2(0, text_surface.get_height())
-            if self.design_data.groups_ix == 0 and ix == self.design_data.params_ix:
+            if self.design_data.param_group == ParamGroup.PHYSIC and ix == self.design_data.params_ix:
                 # highlight current param
                 text_surface = text_font.render(
                     "* {}".format(s), True, boxcolors.BLACK, boxcolors.GREEN)
@@ -1062,7 +1072,7 @@ class BoxUI():
                 self.design_data.effect["when"]).name))
 
         for ix, s in enumerate(effect):
-            if self.design_data.groups_ix == 1 and ix == self.design_data.effect_ix:
+            if self.design_data.param_group == ParamGroup.EFFECT and ix == self.design_data.effect_ix:
                 # highlight current param
                 back_color = boxcolors.GREEN
                 s = "* {}".format(s)

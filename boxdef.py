@@ -96,6 +96,10 @@ class ScreenLayout:
     popup_pos: b2Vec2 = (b2Vec2(width, height) - popup_size / 2) / 2
     ndigits: int = 4
 
+@unique
+class ParamGroup(IntEnum):
+    PHYSIC = 0
+    EFFECT = 1
 
 @dataclass
 class DesignData:
@@ -120,7 +124,6 @@ class DesignData:
     effect: Dict = field(default_factory=dict)
     effect_ix: int = 0
 
-    groups: List = field(default_factory=list)
-    groups_ix: int = 0
+    param_group: ParamGroup = ParamGroup.PHYSIC
 
     float_inc: float = 0.1

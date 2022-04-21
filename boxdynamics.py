@@ -106,6 +106,8 @@ class BoxEnv(gym.Env):
         logging.basicConfig(
             format='%(levelname)s: %(asctime)s: %(message)s', level=logging.DEBUG)
 
+        # TODO: give possibility to delete body if out of world
+
         # initializing base class
         super(BoxEnv, self).__init__()
 
@@ -648,8 +650,7 @@ class BoxEnv(gym.Env):
         elif type == BodyType.KINEMATIC_ZONE:
             return self.get_kinematic_zone_data()
         else:
-            # TODO: explain
-            assert False
+            assert False and "Unknown body type"
 
     def get_border_data(self) -> BodyData:
         # todo border effect
