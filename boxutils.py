@@ -11,58 +11,62 @@ from Box2D import b2Vec2
 def anglemag_to_vec(angle, magnitude):
     return b2Vec2(math.cos(angle), math.sin(angle)) * magnitude
 
+
 def dataclass_to_dict(data):
-        dump_db = list()
-        for name, value in list(data.__dict__.items()):
-            dump_db.append(list())
-            dump_db[-1].append(name)
-            # getting actual value of dataclass field
-            if is_dataclass(value):
-                # recursive for nested dataclasses
-                debug("dataclass {} : {}".format(name, value))
-                dump_db[-1].append(dataclass_to_dict(value))
-            elif isinstance(value, dict):
-                # using copy() dict method
-                dump_db[-1].append(value.copy())
-                debug("dict {} : {}".format(name, value))
-            elif isinstance(value, IntEnum):
-                # copying enum
-                debug("IntEnum {} : {}".format(name, value.name))
-                dump_db[-1].append(type(value)(value))
-            # TODO: support other types of lists
-            elif isinstance(value, list):
-                # appending list for values
-                debug("list {}".format(name))
-                dump_db[-1].append(list())
-                for sub_value in value:
-                    # appending every value in list
-                    if is_dataclass(sub_value):
-                        # list of dataclasses
-                        dump_db[-1][1].append(dataclass_to_dict(sub_value))
-                    elif isinstance(sub_value, b2Vec2):
-                        # list of b2Vec2
-                        dump_db[-1][1].append(list(sub_value))
-                    elif isinstance(sub_value, (int, float, str)):
-                        # list of strings
-                        dump_db[-1][1].append(sub_value)
-                    elif isinstance(sub_value, dict):
-                        dump_db[-1][1].append(sub_value.copy())
-                    else:
-                        logging.error("Unexpected type in dataclass {} {}".format(name, type(sub_value)))
-                        assert False
-            elif isinstance(value, b2Vec2):
-                debug("b2Vec2 {} : {}".format(name, value))
-                dump_db[-1].append(list(value))
-            else:
-                # TODO: tuples (and other similar stuff inside data) might be dangerous
-                debug("normal {} : {}".format(name, value))
-                dump_db[-1].append(value)
+    dump_db = list()
+    for name, value in list(data.__dict__.items()):
+        dump_db.append(list())
+        dump_db[-1].append(name)
+        # getting actual value of dataclass field
+        if is_dataclass(value):
+            # recursive for nested dataclasses
+            debug("dataclass {} : {}".format(name, value))
+            dump_db[-1].append(dataclass_to_dict(value))
+        elif isinstance(value, dict):
+            # using copy() dict method
+            dump_db[-1].append(value.copy())
+            debug("dict {} : {}".format(name, value))
+        elif isinstance(value, IntEnum):
+            # copying enum
+            debug("IntEnum {} : {}".format(name, value.name))
+            dump_db[-1].append(type(value)(value))
+        # TODO: support other types of lists
+        elif isinstance(value, list):
+            # appending list for values
+            debug("list {}".format(name))
+            dump_db[-1].append(list())
+            for sub_value in value:
+                # appending every value in list
+                if is_dataclass(sub_value):
+                    # list of dataclasses
+                    dump_db[-1][1].append(dataclass_to_dict(sub_value))
+                elif isinstance(sub_value, b2Vec2):
+                    # list of b2Vec2
+                    dump_db[-1][1].append(list(sub_value))
+                elif isinstance(sub_value, (int, float, str)):
+                    # list of strings
+                    dump_db[-1][1].append(sub_value)
+                elif isinstance(sub_value, dict):
+                    dump_db[-1][1].append(sub_value.copy())
+                else:
+                    logging.error("Unexpected type in dataclass {} {}".format(
+                        name, type(sub_value)))
+                    assert False
+        elif isinstance(value, b2Vec2):
+            debug("b2Vec2 {} : {}".format(name, value))
+            dump_db[-1].append(list(value))
+        else:
+            # TODO: tuples (and other similar stuff inside data) might be dangerous
+            debug("normal {} : {}".format(name, value))
+            dump_db[-1].append(value)
 
-        dump_db = dict(dump_db)
-        return dump_db
+    dump_db = dict(dump_db)
+    return dump_db
 
-def get_point_angle(angle: float, length: float=1, from_point: b2Vec2=b2Vec2(0, 0)) -> b2Vec2:
+
+def get_point_angle(angle: float, length: float = 1, from_point: b2Vec2 = b2Vec2(0, 0)) -> b2Vec2:
     return from_point + b2Vec2(math.cos(angle), math.sin(angle)) * length
+
 
 def get_line_eq(point1: b2Vec2, point2: b2Vec2):
     try:
@@ -76,12 +80,14 @@ def get_line_eq(point1: b2Vec2, point2: b2Vec2):
     n = point1[1] - (m*point1[0])
     return m, n
 
+
 def get_line_eq_angle(point: b2Vec2, angle: float):
     # m*x + n = y
     m = math.tan(angle)
     n = point.y - m*point.x
 
     return m, n
+
 
 def get_intersection(line1, line2):
     intersection = [-1, -1]

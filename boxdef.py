@@ -6,6 +6,7 @@ from Box2D import b2Vec2, b2Body
 
 import boxcolors
 
+
 @unique
 class BodyType(IntEnum):
     AGENT = 0
@@ -18,11 +19,13 @@ class BodyType(IntEnum):
     BORDER = 7
     DEFAULT = 8
 
+
 @unique
 class EffectWhen(IntEnum):
     DURING_CONTACT = 0
     ON_CONTACT = 1
     OFF_CONTACT = 2
+
 
 @unique
 class EffectWho(IntEnum):
@@ -30,17 +33,18 @@ class EffectWho(IntEnum):
     OTHER = 1
     BOTH = 2
 
+
 @unique
 class EffectType(IntEnum):
-    NONE = 5 # params: none
-    BOUNCE = 10 # params: coeff
-    INVERT_VELOCITY = 4 # params: none
+    NONE = 5  # params: none
+    BOUNCE = 10  # params: coeff
+    INVERT_VELOCITY = 4  # params: none
     SET_VELOCITY = 0  # sets given body variable # params: mag, angle
-    APPLY_FORCE = 1 # params: mag, angle
-    SET_LIN_DAMP = 6 # params: coeff
-    SET_ANG_DAMP = 7 # params: coeff
-    SET_FRICTION = 8 # params: coeff
-    SET_MAX_ACTION = 9 # params: coeff
+    APPLY_FORCE = 1  # params: mag, angle
+    SET_LIN_DAMP = 6  # params: coeff
+    SET_ANG_DAMP = 7  # params: coeff
+    SET_FRICTION = 8  # params: coeff
+    SET_MAX_ACTION = 9  # params: coeff
     DONE = 2  # TODO: sets self.done in BoxEnv to True # params: none
     RESET = 3  # TODO: calls BoxEnv().reset() # params: none
 
@@ -99,7 +103,7 @@ class DesignData:
     vertices: List[b2Vec2] = field(default_factory=list)
     width: float = 0.0
     height: float = 0.0
-    normal_plane: bool = True # for rotation after inverse resize
+    normal_plane: bool = True  # for rotation after inverse resize
     zero_angle: float = 0.0
     angle: float = 0.0
     moved: bool = False
@@ -107,7 +111,6 @@ class DesignData:
 
     # TODO: toggle color
     color: tuple = field(default=boxcolors.STATIC_OBSTACLE)
-
 
     params: Dict = field(default_factory=dict)
     # indicates which param to currently change

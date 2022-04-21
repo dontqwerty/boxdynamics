@@ -18,11 +18,14 @@ class ContactListener(b2ContactListener):
         # keeping track of which body is in touch with others
         self.add_contact(contact)
 
-        print(contact.fixtureA.body.userData.type, contact.fixtureB.body.userData.type)
+        print(contact.fixtureA.body.userData.type,
+              contact.fixtureB.body.userData.type)
         # performing bodyA effect
-        self.contact_effect(contact.fixtureA.body, contact.fixtureB.body, EffectWhen.ON_CONTACT)
+        self.contact_effect(contact.fixtureA.body,
+                            contact.fixtureB.body, EffectWhen.ON_CONTACT)
         # performing bodyB effect
-        self.contact_effect(contact.fixtureB.body, contact.fixtureA.body, EffectWhen.ON_CONTACT)
+        self.contact_effect(contact.fixtureB.body,
+                            contact.fixtureA.body, EffectWhen.ON_CONTACT)
 
         pass
 
@@ -31,9 +34,11 @@ class ContactListener(b2ContactListener):
         self.remove_contact(contact)
 
         # performing bodyA effect
-        self.contact_effect(contact.fixtureA.body, contact.fixtureB.body, EffectWhen.OFF_CONTACT)
+        self.contact_effect(contact.fixtureA.body,
+                            contact.fixtureB.body, EffectWhen.OFF_CONTACT)
         # performing bodyB effect
-        self.contact_effect(contact.fixtureB.body, contact.fixtureA.body, EffectWhen.OFF_CONTACT)
+        self.contact_effect(contact.fixtureB.body,
+                            contact.fixtureA.body, EffectWhen.OFF_CONTACT)
         pass
 
     def PreSolve(self, contact, oldMainfold):
@@ -75,7 +80,9 @@ class ContactListener(b2ContactListener):
         # checking effect when
         if effect_whenA == when:
             # checking effect who
-            if effect_whoA == EffectWho.BOTH or (effect_whoA == EffectWho.AGENT and dataB.type == BodyType.AGENT) or (effect_whoA == EffectWho.OTHER and dataB.type != BodyType.AGENT):
+            if effect_whoA == EffectWho.BOTH or \
+                (effect_whoA == EffectWho.AGENT and dataB.type == BodyType.AGENT) or \
+                    (effect_whoA == EffectWho.OTHER and dataB.type != BodyType.AGENT):
                 param_0 = dataA.effect["param_0"]
                 param_1 = dataA.effect["param_1"]
                 # performing fixtureA effect
@@ -85,7 +92,8 @@ class ContactListener(b2ContactListener):
                     # calculating force based on angle (param_0)
                     # and mag (param_1)
                     force = anglemag_to_vec(angle=param_1, magnitude=param_1)
-                    bodyB.ApplyForce(force=force, point=bodyB.position, wake=True)
+                    bodyB.ApplyForce(
+                        force=force, point=bodyB.position, wake=True)
                 elif effect_typeA == EffectType.SET_VELOCITY:
                     vel = anglemag_to_vec(angle=param_0, magnitude=param_1)
                     bodyB.linearVelocity = vel

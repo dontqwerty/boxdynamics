@@ -75,7 +75,7 @@ class EnvCfg:
 
     # world
     create_borders: bool = True
-    render_distances: bool = True # render text distances for observations
+    render_distances: bool = True  # render text distances for observations
     borders_width: float = 10  # meters
     border_inside: float = 0
 
@@ -222,8 +222,10 @@ class BoxEnv(gym.Env):
             # Example: points which is a list of b2Vec2, here is just
             # a list of 2-elements lists
             self.cfg.design_bodies[bix] = DesignData(**body)
-            self.cfg.design_bodies[bix].points = [b2Vec2(p) for p in self.cfg.design_bodies[bix].points]
-            self.cfg.design_bodies[bix].vertices = [b2Vec2(p) for p in self.cfg.design_bodies[bix].vertices]
+            self.cfg.design_bodies[bix].points = [
+                b2Vec2(p) for p in self.cfg.design_bodies[bix].points]
+            self.cfg.design_bodies[bix].vertices = [
+                b2Vec2(p) for p in self.cfg.design_bodies[bix].vertices]
 
         # screen layout
         self.cfg.screen = ScreenLayout(**self.cfg.screen)
@@ -256,7 +258,8 @@ class BoxEnv(gym.Env):
         elif action is not None:
             # calculating where to apply force
             # target is "head" of agent
-            self.action = anglemag_to_vec(angle=action[0] + self.agent_body.angle, magnitude=action[1])
+            self.action = anglemag_to_vec(
+                angle=action[0] + self.agent_body.angle, magnitude=action[1])
         else:
             self.action = b2Vec2(0, 0)
 
@@ -282,7 +285,8 @@ class BoxEnv(gym.Env):
             self.ui.ui_sleep()
             self.render()
 
-        self.cfg.design_bodies = self.ui.copy_design_bodies(self.ui.design_bodies)
+        self.cfg.design_bodies = self.ui.copy_design_bodies(
+            self.ui.design_bodies)
 
         self.create_bodies()
 
@@ -470,7 +474,7 @@ class BoxEnv(gym.Env):
 
         body.userData = self.get_dynamic_zone_data()
         return body
-    
+
     def create_kinematic_zone(self, pos, size, velocity=b2Vec2(1, 1), angle=0):
         body: b2Body = self.world.CreateKinematicBody(
             position=pos, angle=angle, linearVelocity=velocity, angularVelocity=0)
@@ -488,7 +492,8 @@ class BoxEnv(gym.Env):
         body.linearDamping = design_data.params["lin_damping"]
         design_data.params["lin_velocity_angle"] = design_data.params["lin_velocity_angle"] * (
             2 * math.pi / 360)
-        body.linearVelocity = anglemag_to_vec(angle=design_data.params["lin_velocity_angle"], magnitude=design_data.params["lin_velocity"])
+        body.linearVelocity = anglemag_to_vec(
+            angle=design_data.params["lin_velocity_angle"], magnitude=design_data.params["lin_velocity"])
         body.inertia = design_data.params["inertia"]
         body.fixtures[0].density = design_data.params["density"]
         body.fixtures[0].friction = design_data.params["friction"]

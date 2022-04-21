@@ -263,7 +263,8 @@ class BoxUI():
     #     return l
 
     def get_effect(self, type: EffectType, param_0=0.0, param_1=0.0, who=EffectWho.AGENT, when=EffectWhen.DURING_CONTACT):
-        effect = {"type": type, "who": who, "when": when, "param_0": param_0, "param_1": param_1}
+        effect = {"type": type, "who": who, "when": when,
+                  "param_0": param_0, "param_1": param_1}
         return effect
 
     def get_design_data(self, set_type=SetType.DEFAULT):
@@ -691,7 +692,9 @@ class BoxUI():
                 self.design_data.points[0], mouse_pos)
             self.design_data.angle = diagonal_angle + self.design_data.zero_angle
 
-            self.design_data.points[1] = self.design_data.points[0] + anglemag_to_vec(angle=diagonal_angle, magnitude=diagonal)
+            self.design_data.points[1] = self.design_data.points[0] + \
+                anglemag_to_vec(angle=diagonal_angle, magnitude=diagonal)
+
     def toggle_param(self):
         if self.shift_pressed == False:
             inc = 1
@@ -712,27 +715,28 @@ class BoxUI():
         elif self.design_data.groups_ix == 1:
             # we are toggling effect params
             if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
-                                                    EffectType.SET_VELOCITY):
+                                                   EffectType.SET_VELOCITY):
                 # all effect keys needed
                 self.design_data.effect_ix = (
                     self.design_data.effect_ix + inc) % len(self.design_data.effect)
             elif self.design_data.effect["type"] in (EffectType.SET_LIN_DAMP,
-                                                    EffectType.SET_ANG_DAMP,
-                                                    EffectType.SET_FRICTION,
-                                                    EffectType.SET_MAX_ACTION,
-                                                    EffectType.BOUNCE):
+                                                     EffectType.SET_ANG_DAMP,
+                                                     EffectType.SET_FRICTION,
+                                                     EffectType.SET_MAX_ACTION,
+                                                     EffectType.BOUNCE):
                 # key param_1 not needed
                 self.design_data.effect_ix = (
                     self.design_data.effect_ix + inc) % (len(self.design_data.effect) - 1)
             elif self.design_data.effect["type"] in (EffectType.DONE,
-                                                    EffectType.RESET,
-                                                    EffectType.INVERT_VELOCITY):
+                                                     EffectType.RESET,
+                                                     EffectType.INVERT_VELOCITY):
                 # keys param_0 and param_1 not needed
                 self.design_data.effect_ix = (
                     self.design_data.effect_ix + inc) % (len(self.design_data.effect) - 2)
             elif self.design_data.effect["type"] == EffectType.NONE:
                 # only key type needed
-                self.design_data.effect_ix = (self.design_data.effect_ix + inc) % 1
+                self.design_data.effect_ix = (
+                    self.design_data.effect_ix + inc) % 1
             pass
         else:
             assert False and "Added something to self.design_data.groups?"
@@ -776,7 +780,8 @@ class BoxUI():
         elif self.design_data.groups_ix == 1:
             name = list(self.design_data.effect)[self.design_data.effect_ix]
             if name in ("type", "who", "when"):
-                self.design_data.effect[name] = self.toggle_enum(self.design_data.effect[name], [], increase)
+                self.design_data.effect[name] = self.toggle_enum(
+                    self.design_data.effect[name], [], increase)
             else:
                 if increase:
                     self.design_data.effect[name] += self.design_data.float_inc
@@ -1070,24 +1075,33 @@ class BoxUI():
             EffectType(self.design_data.effect["type"]).name))
 
         if self.design_data.effect["type"] in (EffectType.APPLY_FORCE,
-                                                EffectType.SET_VELOCITY):
-            effect.append("Who: {}".format(EffectWho(self.design_data.effect["who"]).name))
-            effect.append("When: {}".format(EffectWhen(self.design_data.effect["when"]).name))
-            effect.append("Param A: {}".format(self.design_data.effect["param_0"]))
-            effect.append("Param B: {}".format(self.design_data.effect["param_1"]))
+                                               EffectType.SET_VELOCITY):
+            effect.append("Who: {}".format(
+                EffectWho(self.design_data.effect["who"]).name))
+            effect.append("When: {}".format(EffectWhen(
+                self.design_data.effect["when"]).name))
+            effect.append("Param A: {}".format(
+                self.design_data.effect["param_0"]))
+            effect.append("Param B: {}".format(
+                self.design_data.effect["param_1"]))
         elif self.design_data.effect["type"] in (EffectType.SET_LIN_DAMP,
-                                                EffectType.SET_ANG_DAMP,
-                                                EffectType.SET_FRICTION,
-                                                EffectType.SET_MAX_ACTION,
-                                                EffectType.BOUNCE):
-            effect.append("Who: {}".format(EffectWho(self.design_data.effect["who"]).name))
-            effect.append("When: {}".format(EffectWhen(self.design_data.effect["when"]).name))
-            effect.append("Param A: {}".format(self.design_data.effect["param_0"]))
+                                                 EffectType.SET_ANG_DAMP,
+                                                 EffectType.SET_FRICTION,
+                                                 EffectType.SET_MAX_ACTION,
+                                                 EffectType.BOUNCE):
+            effect.append("Who: {}".format(
+                EffectWho(self.design_data.effect["who"]).name))
+            effect.append("When: {}".format(EffectWhen(
+                self.design_data.effect["when"]).name))
+            effect.append("Param A: {}".format(
+                self.design_data.effect["param_0"]))
         elif self.design_data.effect["type"] in (EffectType.DONE,
-                                                EffectType.RESET,
-                                                EffectType.INVERT_VELOCITY):
-            effect.append("Who: {}".format(EffectWho(self.design_data.effect["who"]).name))
-            effect.append("When: {}".format(EffectWhen(self.design_data.effect["when"]).name))
+                                                 EffectType.RESET,
+                                                 EffectType.INVERT_VELOCITY):
+            effect.append("Who: {}".format(
+                EffectWho(self.design_data.effect["who"]).name))
+            effect.append("When: {}".format(EffectWhen(
+                self.design_data.effect["when"]).name))
 
         for ix, s in enumerate(effect):
             if self.design_data.groups_ix == 1 and ix == self.design_data.effect_ix:
@@ -1095,11 +1109,12 @@ class BoxUI():
                 back_color = boxcolors.GREEN
             else:
                 back_color = boxcolors.INFO_BACK
-        
+
             pos += b2Vec2(0, text_surface.get_height())
             s = "* {}".format(s)
-                
-            text_surface = text_font.render(s, True, boxcolors.BLACK, back_color)
+
+            text_surface = text_font.render(
+                s, True, boxcolors.BLACK, back_color)
             self.screen.blit(text_surface, pos)
 
         self.board_y_shift = pos.y
