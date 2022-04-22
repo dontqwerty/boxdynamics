@@ -1,3 +1,4 @@
+from distutils.log import info
 import json
 import logging
 import math
@@ -100,6 +101,7 @@ class BoxUI():
     def render(self):
         self.screen.fill(boxcolors.BACK)
 
+        self.render_world()
         self.render_back()
 
         # title
@@ -114,10 +116,11 @@ class BoxUI():
 
         # TODO: fix that when designing and quit confirmation is asked
         # the observation vectors of the agente can be seen
-        self.render_world()
         if self.mode == UIMode.SIMULATION or (self.prev_mode == UIMode.SIMULATION and self.mode == UIMode.QUIT_CONFIRMATION):
             self.render_action()
             self.render_observations()
+            self.render_simulation_data()
+            # self.render_state()
         if self.mode in (UIMode.SELECT,
                          UIMode.RESIZE,
                          UIMode.MOVE,
@@ -758,7 +761,8 @@ class BoxUI():
         for body in sorted_bodies:
             # skipping border rendering cause not necessary
             if body.userData.type == BodyType.BORDER:
-                continue
+                # continue
+                pass
             for fixture in body.fixtures:
                 vertices = [self.__pg_coord(
                     body.transform * v) for v in fixture.shape.vertices]
@@ -791,17 +795,79 @@ class BoxUI():
                     (0, self.layout.height)]
         pg.draw.polygon(self.screen, boxcolors.INFO_BACK, vertices)
 
-    def render_simulation_data(self):
-        # text_font = pg.font.SysFont(self.font, self.font_size)
+    def get_simulation_data(self):
+        def get_fps():
+            return round(self.clock.get_fps())
+        def get_time():
+            return round(pg.time.get_ticks() / 1000, 1)
+        def get_total_reward():
+            return round(self.env.total_reward, self.layout.ndigits)
+        def get_agent_lin_damp():
+            return round(self.env.agent_body.linearDamping, self.layout.ndigits)
+        def get_agent_ang_damp():
+            return round(self.env.agent_body.angularDamping, self.layout.ndigits)
+        def get_agent_friction():
+            return round(self.env.agent_body.fixtures[0].friction, self.layout.ndigits)
 
-        # # fps
-        # fps = round(self.clock.get_fps())
-        # fps_point = (0, 0)
-        # fps_color = boxcolors.GREEN.value if abs(
-        #     fps - self.target_fps) < 10 else boxcolors.RED.value
-        # text_surface = text_font.render(
-        #     str(fps), True, boxcolors.BLACK.value, fps_color)
-        # self.screen.blit(text_surface, fps_point)
+        data = [{"name": "FPS", "value": get_fps()},
+                {"name": "TIME", "value": get_time()},
+                {"name": "REWARD", "value": get_total_reward()},
+                {"name": "LIN DAMP", "value": get_agent_lin_damp()},
+                {"name": "ANG DAMP", "value": get_agent_ang_damp()},
+                {"name": "FRICTION", "value": get_agent_friction()}]
+        
+        return data
+
+    def render_simulation_data(self):
+        text_font = pg.font.SysFont(
+            self.font, self.layout.big_font)
+
+        # title
+        pos = b2Vec2(self.layout.border, self.board_y_shift +
+                     (2*self.layout.border))
+        text_surface = text_font.render(
+            "SIMULATION DATA", True, boxcolors.BLACK, boxcolors.INFO_BACK)
+        self.screen.blit(text_surface, pos)
+
+        text_font = pg.font.SysFont(
+            self.font, self.layout.normal_font)
+        for data in self.get_simulation_data():
+            pos += b2Vec2(0, text_surface.get_height())
+            s = "{}: {}".format(data["name"], data["value"])
+            if data["name"] == "FPS":
+                back_color = boxcolors.GREEN if abs(data["value"] - self.target_fps) < 10 else boxcolors.RED
+            elif data["name"] == "REWARD":
+                back_color = boxcolors.GREEN if data["value"] >= 0 else boxcolors.RED
+            else:
+                back_color = boxcolors.INFO_BACK
+            text_surface = text_font.render(
+                s, True, boxcolors.BLACK, back_color)
+            self.screen.blit(text_surface, pos)
+
+        self.board_y_shift = pos.y
+        pass
+
+    def render_state(self):
+        text_font = pg.font.SysFont(
+            self.font, self.layout.big_font)
+
+        # title
+        pos = b2Vec2(self.layout.border, self.board_y_shift +
+                     (2*self.layout.border))
+        text_surface = text_font.render(
+            "STATE", True, boxcolors.BLACK, boxcolors.INFO_BACK)
+        self.screen.blit(text_surface, pos)
+
+        text_font = pg.font.SysFont(
+            self.font, self.layout.normal_font)
+        for data in self.env.state:
+            pos += b2Vec2(0, text_surface.get_height())
+            s = "{}".format(self.env.state[data])
+            text_surface = text_font.render(
+                s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
+            self.screen.blit(text_surface, pos)
+
+        self.board_y_shift = pos.y
         pass
 
     def render_design(self):

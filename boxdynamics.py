@@ -142,6 +142,7 @@ class BoxEnv(gym.Env):
 
         # defining observation spaces based on cfg.agent.obs_keys
         self.observation_space = gym.spaces.Dict(self.get_observation_dict())
+        self.state = dict()
 
         # list of Observation dataclasses used to set some
         # observations on each step
@@ -150,13 +151,17 @@ class BoxEnv(gym.Env):
         # creates world borders and agent
         self.create_world()
 
+        # reward to zero
+        self.total_reward = 0.0
+
     def reset(self):
+        logging.info("Resetting enviroment")
         # resetting base class
         super().reset()
 
         # resetting reward
         # TODO: give reward to agent
-        self.reward = 0.0
+        self.total_reward = 0.0
         self.done = False
         self.manual_mode = False
 
@@ -186,9 +191,9 @@ class BoxEnv(gym.Env):
         # current and previous state
         self.state = self.get_observations()
         assert self.state in self.observation_space
-
         # agent rewards
         step_reward = self.set_reward()
+        self.total_reward += step_reward
 
         info = {}
 
@@ -356,7 +361,7 @@ class BoxEnv(gym.Env):
         body.userData.effect = design_data.effect.copy()
 
     def create_borders(self):
-        inside = self.cfg.border_inside  # defines how much of the borders are visible
+        inside = self.cfg.border_inside  # defines how much of the borders is visible
 
         # TODO: border reward
 

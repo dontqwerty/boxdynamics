@@ -16,3 +16,4 @@ while True:
         # print(total_reward)
     if done:
         env.reset()
+        break
