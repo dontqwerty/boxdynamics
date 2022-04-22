@@ -89,6 +89,7 @@ class ContactListener(b2ContactListener):
                     # and mag (param_1)
                     param_0 = param_0 * math.pi / 180
                     force = anglemag_to_vec(angle=param_0, magnitude=param_1)
+                    print(bodyB.userData.type.name)
                     bodyB.ApplyForce(
                         force=force, point=bodyB.position, wake=True)
                 elif effect_typeA == EffectType.SET_VELOCITY:

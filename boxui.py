@@ -227,6 +227,7 @@ class BoxUI():
                         # use confirmed
                         self.set_mode(UIMode.SIMULATION)
                     elif self.mode == UIMode.SELECT:
+                        self.design_data.points[1] = b2Vec2(pg.mouse.get_pos())
                         self.set_mode(UIMode.RESIZE)
 
                 elif event.type == pg.QUIT:

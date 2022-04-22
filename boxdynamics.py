@@ -170,10 +170,6 @@ class BoxEnv(gym.Env):
 
         self.perform_action(action)
 
-        # Make Box2D simulate the physics of our world for one step.
-        self.world.Step(self.cfg.time_step,
-                        self.cfg.vel_iter, self.cfg.pos_iter)
-
         # effects with EffectWhen.DURING_CONTACT
         for bodyA in self.world.bodies:
             dataA: BodyData = bodyA.userData
@@ -181,6 +177,9 @@ class BoxEnv(gym.Env):
                 for bodyB in dataA.contacts:
                     self.contact_listener.contact_effect(bodyA, bodyB, EffectWhen.DURING_CONTACT)
 
+        # Make Box2D simulate the physics of our world for one step.
+        self.world.Step(self.cfg.time_step,
+                        self.cfg.vel_iter, self.cfg.pos_iter)
         # clear forces or they will stay permanently
         self.world.ClearForces()
 
