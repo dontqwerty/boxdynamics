@@ -407,6 +407,7 @@ class BoxUI():
             self.new_design()
 
     def save_design(self, filename):
+        filename = "designs/{}".format(filename)
         dump_db = list()
         for body in self.design_bodies:
             if body.valid:
@@ -424,6 +425,7 @@ class BoxUI():
         # TODO: bugfix when after loading design
         # and changing loaded bodies
         # the angle changes by 90 deg when creating objects
+        filename = "designs/{}".format(filename)
         try:
             with open(filename, "r") as f:
                 loaded_db = json.load(f)

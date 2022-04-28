@@ -135,3 +135,4 @@ Box2D-body-and-fixture.txt
 boxuitest.py
 *.json
 *.mp3
+designs/*

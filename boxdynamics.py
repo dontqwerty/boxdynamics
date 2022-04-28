@@ -4,6 +4,8 @@ import random
 from dataclasses import dataclass, field
 from enum import IntEnum, unique
 import logging
+from string import hexdigits
+from turtle import heading
 from typing import Dict, List
 
 import gym
@@ -326,8 +328,9 @@ class BoxEnv(gym.Env):
                 "Can not create body from design {}".format(design_data))
             return
         pos = get_intersection(line1, line2)
-        width = (points[0] - points[1]).length / 2
-        height = (points[1] - points[2]).length / 2
+        # size for Box2D is half the real size
+        width = (design_data.width) / (2*self.cfg.ppm)
+        height = (design_data.height) / (2*self.cfg.ppm)
         size = (width, height)
         angle = -design_data.angle
 
