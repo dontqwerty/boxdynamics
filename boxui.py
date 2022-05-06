@@ -410,6 +410,11 @@ class BoxUI():
         dump_db = list()
         for body in self.design_bodies:
             if body.valid:
+                # resetting some fields to default
+                # lets you modify the body again when loaded
+                body.moved = False
+                body.rotated = False
+                body.normal_plane = True
                 dump_db.append(dataclass_to_dict(body))
         try:
             with open(filename, "w") as f:
@@ -584,25 +589,29 @@ class BoxUI():
             self.design_data.points[1] = self.design_data.vertices[2]
 
     def rotate(self):
-        mouse_pos = b2Vec2(pg.mouse.get_pos())
-        if self.design_data.rotated is False:
-            if self.design_data.normal_plane:
-                self.design_data.zero_angle = - \
-                    math.atan(self.design_data.height /
-                              (self.design_data.width))
+        try:
+            mouse_pos = b2Vec2(pg.mouse.get_pos())
+            if self.design_data.rotated is False:
+                if self.design_data.normal_plane:
+                    self.design_data.zero_angle = - \
+                        math.atan(self.design_data.height /
+                                (self.design_data.width))
+                else:
+                    self.design_data.zero_angle = math.atan(
+                        self.design_data.height / (self.design_data.width))
+                self.design_data.rotated = True
             else:
-                self.design_data.zero_angle = math.atan(
-                    self.design_data.height / (self.design_data.width))
-            self.design_data.rotated = True
-        else:
-            diagonal = (
-                self.design_data.points[1] - self.design_data.points[0]).length
-            diagonal_angle = self.get_angle(
-                self.design_data.points[0], mouse_pos)
-            self.design_data.angle = diagonal_angle + self.design_data.zero_angle
+                diagonal = (
+                    self.design_data.points[1] - self.design_data.points[0]).length
+                diagonal_angle = self.get_angle(
+                    self.design_data.points[0], mouse_pos)
+                self.design_data.angle = diagonal_angle + self.design_data.zero_angle
 
-            self.design_data.points[1] = self.design_data.points[0] + \
-                anglemag_to_vec(angle=diagonal_angle, magnitude=diagonal)
+                self.design_data.points[1] = self.design_data.points[0] + \
+                    anglemag_to_vec(angle=diagonal_angle, magnitude=diagonal)
+        except ZeroDivisionError:
+            # TODO: handle better
+            pass
 
     def modify_param(self, increase=True):
         if self.design_data.param_group == ParamGroup.PHYSIC:
