@@ -4,9 +4,7 @@ import random
 from dataclasses import dataclass, field
 from enum import IntEnum, unique
 import logging
-from string import hexdigits
-from turtle import heading
-from typing import Dict, List
+from typing import List
 
 import gym
 import numpy as np
@@ -197,6 +195,7 @@ class BoxEnv(gym.Env):
         step_reward = self.set_reward()
         self.total_reward += step_reward
 
+        # TODO: info to return
         info = {}
 
         done = self.done
@@ -292,6 +291,7 @@ class BoxEnv(gym.Env):
     # when finished it copies the created world
     # inside the self.cfg.design
     def world_design(self):
+        # getting bodies already inside config file
         for design in copy_design_bodies(self.cfg.design_bodies):
             self.ui.design_bodies.append(design)
 
@@ -362,6 +362,8 @@ class BoxEnv(gym.Env):
         body.userData.level = design_data.physic["level"]
 
         body.userData.effect = design_data.effect.copy()
+
+        return body
 
     def create_borders(self):
         inside = self.cfg.border_inside  # defines how much of the borders is visible

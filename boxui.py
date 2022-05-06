@@ -1,4 +1,3 @@
-from distutils.log import info
 import json
 import logging
 import math
@@ -425,6 +424,7 @@ class BoxUI():
         # TODO: bugfix when after loading design
         # and changing loaded bodies
         # the angle changes by 90 deg when creating objects
+        # TODO: hardcoded folder name
         filename = "designs/{}".format(filename)
         try:
             with open(filename, "r") as f:
@@ -801,6 +801,7 @@ class BoxUI():
         def get_fps():
             return round(self.clock.get_fps())
         def get_time():
+            # TODO: start time when starting simulation and not during design
             return round(pg.time.get_ticks() / 1000, 1)
         def get_total_reward():
             return round(self.env.total_reward, self.layout.ndigits)

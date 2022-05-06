@@ -2,7 +2,7 @@ import logging
 import math
 from typing import List
 
-from Box2D import b2Body, b2Contact, b2ContactListener, b2Vec2
+from Box2D import b2Body, b2Contact, b2ContactListener
 
 from boxdef import BodyData, BodyType, EffectType, EffectWhen, EffectWho
 from boxutils import anglemag_to_vec

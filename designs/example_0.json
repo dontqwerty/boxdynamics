@@ -1,0 +1,70 @@
+[
+    {
+        "valid": true,
+        "points": [
+            [
+                595.0,
+                335.0
+            ],
+            [
+                672.0,
+                414.0
+            ]
+        ],
+        "vertices": [
+            [
+                595.0,
+                335.0
+            ],
+            [
+                672.0,
+                335.0
+            ],
+            [
+                672.0,
+                414.0
+            ],
+            [
+                595.0,
+                414.0
+            ]
+        ],
+        "width": 77.0,
+        "height": 79.0,
+        "normal_plane": true,
+        "zero_angle": 0.0,
+        "angle": 0.0,
+        "moved": true,
+        "rotated": false,
+        "color": [
+            0,
+            125,
+            0,
+            255
+        ],
+        "physic": {
+            "type": 4,
+            "reward": 1.0,
+            "level": 0,
+            "lin_velocity": 10.0,
+            "lin_velocity_angle": 0.0,
+            "ang_velocity": 0.0,
+            "density": 1.0,
+            "inertia": 0.0,
+            "friction": 0.0,
+            "lin_damping": 0.0,
+            "ang_damping": 0.0
+        },
+        "physic_ix": 1,
+        "effect": {
+            "type": 2,
+            "who": 0,
+            "when": 1,
+            "param_0": 0.0,
+            "param_1": 0.0
+        },
+        "effect_ix": 2,
+        "param_group": 1,
+        "float_inc": 1.0
+    }
+]
