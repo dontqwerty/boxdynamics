@@ -935,22 +935,18 @@ class BoxUI():
         # implicit parameters
         position = self.env.world_coord(b2Vec2(self.design_data.points[0]))
         data = ["Next: {}".format(self.set_type.name),
-                "Position ({:.2f}, {:.2f})".format(position.x, position.y),
                 "Size ({:.2f}, {:.2f})".format(self.design_data.width, self.design_data.height),
+                "Position ({:.2f}, {:.2f})".format(position.x, position.y),
                 "Angle: {:.2f}".format(-360 * self.design_data.angle / (2 * math.pi))]
 
         for ix, s in enumerate(data):
             pos += b2Vec2(0, text_surface.get_height())
             # TODO: not ix hardcoded
-            if self.mode == UIMode.RESIZE and ix == 2:
+            if (self.mode == UIMode.RESIZE and ix == 1) or \
+                (self.mode == UIMode.MOVE and ix == 2) or \
+                (self.mode == UIMode.ROTATE and ix == 3):
                 text_surface = text_font.render(
-                    s, True, boxcolors.BLACK, boxcolors.GREEN)
-            elif self.mode == UIMode.MOVE and ix == 1:
-                text_surface = text_font.render(
-                    s, True, boxcolors.BLACK, boxcolors.GREEN)
-            elif self.mode == UIMode.ROTATE and ix == 3:
-                text_surface = text_font.render(
-                    s, True, boxcolors.BLACK, boxcolors.GREEN)
+                    s, True, boxcolors.BLACK, boxcolors.MAGENTA)
             else:
                 text_surface = text_font.render(
                     s, True, boxcolors.BLACK, boxcolors.INFO_BACK)
