@@ -20,6 +20,8 @@ from boxui import BoxUI
 from boxutils import anglemag_to_vec, dataclass_to_dict, get_intersection, get_line_eq, copy_design_bodies, get_effect
 
 
+CFG_PATH = "config.json"
+
 @unique
 class AgentHeadType(IntEnum):
     CENTER = 0
@@ -118,7 +120,7 @@ class BoxEnv(gym.Env):
 
         # setting configuration based on deafults
         # needed before using self.cfg
-        self.load_conf("config.json")
+        self.load_conf(CFG_PATH)
 
         # initializing UI
         self.ui = BoxUI(self, self.cfg.screen,
@@ -213,12 +215,12 @@ class BoxEnv(gym.Env):
             self.world.DestroyBody(body)
         self.ui.quit()
 
-    def save_conf(self, filename="config.json"):
+    def save_conf(self, filename=CFG_PATH):
         with open(filename, "w") as f:
             json.dump(dataclass_to_dict(self.cfg), f)
         pass
 
-    def load_conf(self, filename="config.json"):
+    def load_conf(self, filename=CFG_PATH):
         try:
             with open(filename, "r") as f:
                 self.cfg = EnvCfg(**json.load(f))
