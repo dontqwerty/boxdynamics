@@ -1,9 +1,9 @@
 import json
+import logging
 import math
 import random
 from dataclasses import dataclass, field
 from enum import IntEnum, unique
-import logging
 from typing import List
 
 import gym
@@ -13,12 +13,12 @@ from Box2D import b2Body, b2Fixture, b2PolygonShape, b2Vec2, b2World
 
 import boxcolors as color
 from boxcontacts import ContactListener
-from boxdef import (BodyType, BodyData, DesignData, EffectType, EffectWhen, ScreenLayout,
-                    UIMode)
+from boxdef import (BodyData, BodyType, DesignData, EffectType, EffectWhen,
+                    ScreenLayout, UIMode)
 from boxraycast import RayCastClosestCallback
 from boxui import BoxUI
-from boxutils import anglemag_to_vec, dataclass_to_dict, get_intersection, get_line_eq, copy_design_bodies, get_effect
-
+from boxutils import (anglemag_to_vec, copy_design_bodies, dataclass_to_dict,
+                      get_effect, get_intersection, get_line_eq)
 
 CFG_PATH = "config.json"
 
