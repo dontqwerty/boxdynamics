@@ -1,3 +1,4 @@
+from fileinput import filename
 import json
 import logging
 import math
@@ -259,6 +260,12 @@ class BoxEnv(gym.Env):
 
         logging.info("Config file loaded correctly")
         pass
+
+    def load_design(self, filename):
+        self.ui.load_design(filename)
+
+    def save_design(self, filename):
+        self.ui.save_design(filename)
 
     def set_reward(self):
         step_reward = 0
