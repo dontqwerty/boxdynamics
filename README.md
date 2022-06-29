@@ -20,3 +20,4 @@ __boxenv__ is a tool for the training of RL agents. It allows you to create a co
 - Install requirements
 
         python3 -m pip install -r requirements.txt
+
