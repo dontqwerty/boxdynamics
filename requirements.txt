@@ -1,4 +1,4 @@
-box2d-py==2.3.10
+box2d-py==2.3.8
 gym==0.25.2
 numpy==1.23.2
 pygame==2.1.2
