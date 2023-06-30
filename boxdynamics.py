@@ -158,15 +158,29 @@ class BoxEnv(gym.Env):
         self.total_reward = 0.0
 
     def reset(self):
+        # TODO: reset also every other body
+        # TODO: give the possibility to set random values as design values
+
         logging.info("Resetting enviroment")
         # resetting base class
         super().reset()
+
+        # resetting agent
+        self.agent_body.position = self.agent_initial_pos
+        self.agent_body.angle = self.agent_initial_angle
+        self.agent_fix.body.angularDamping = self.cfg.agent.ang_damp
+        self.agent_fix.body.linearDamping = self.cfg.agent.lin_damp
+        self.agent_body.linearVelocity = b2Vec2(0, 0)
+        self.agent_body.angularVelocity = 0
 
         # resetting reward
         # TODO: give reward to agent
         self.total_reward = 0.0
         self.done = False
         self.manual_mode = False
+
+        # resetting clock
+        self.ui.reset_clock()
 
         # returning state after step with None action
         return self.step(None)[0]
@@ -214,7 +228,6 @@ class BoxEnv(gym.Env):
     def destroy(self):
         for body in self.world.bodies:
             self.world.DestroyBody(body)
-        self.ui.quit()
 
     def save_conf(self, filename=CFG_PATH):
         with open(filename, "w") as f:
@@ -439,6 +452,10 @@ class BoxEnv(gym.Env):
         if self.cfg.agent.angle is None:
             agent_angle = random.random() * (2*math.pi)
 
+        # saving agent's initial positon and angle in order to reset it
+        self.agent_initial_pos = agent_pos
+        self.agent_initial_angle = agent_angle
+
         self.agent_body: b2Body = self.world.CreateDynamicBody(
             position=agent_pos, angle=agent_angle)
         self.agent_fix: b2Fixture = self.agent_body.CreatePolygonFixture(
@@ -539,6 +556,12 @@ class BoxEnv(gym.Env):
             elif key == "body_types":
                 partial_dict = ({"body_types": gym.spaces.Tuple(
                     ([gym.spaces.Discrete(len(BodyType))]*self.cfg.agent.obs_num))})
+            # TODO: change this key to a discrete space only and not a tuple of discrete spaces
+            # upper boundary is #body types ^ 8
+
+            # elif key == "body_types":
+            #     partial_dict = ({"body_types":
+            #         ([gym.spaces.Discrete(len(BodyType)*self.cfg.agent.obs_num)])})
             elif key == "body_velocities":
                 partial_dict = ({"body_velocities": gym.spaces.Box(
                     low=-np.inf, high=np.inf, shape=(self.cfg.agent.obs_num, 2, ))})

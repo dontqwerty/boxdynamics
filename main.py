@@ -15,6 +15,7 @@ from boxdynamics import BoxEnv
 # be used
 env = BoxEnv()
 
+env.load_design("example_0.json")
 # lets you create an environment by using the GUI
 env.world_design()
 
@@ -53,4 +54,4 @@ while True:
 
     # check for done
     if done:
-        break
+        env.reset()

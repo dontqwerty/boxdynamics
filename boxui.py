@@ -52,6 +52,7 @@ class BoxUI():
 
         # window title
         pg.display.set_caption('Box Dynamics')
+
         self.clock = pg.time.Clock()
 
         # font
@@ -82,6 +83,10 @@ class BoxUI():
         logging.info("BoxUI created")
 
         pass
+
+    def reset_clock(self):
+        # TODO: fix clock reset
+        self.clock = pg.time.Clock()
 
     def ui_sleep(self):
         sleep(DESIGN_SLEEP)
