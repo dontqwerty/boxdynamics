@@ -1,10 +1,10 @@
 # if you are not running this from inside the
-# boxenv folder, then conside adding the boxenv
+# boxdynamics folder, then consider adding the boxdynamics
 # folder path to the python path by uncommenting
 # and filling the lines below
 
 # import sys
-# sys.path.append(<location of the boxenv folder>)
+# sys.path.append(<location of the boxdynamics folder>)
 
 from boxdynamics import BoxEnv
 

@@ -1,7 +1,7 @@
-# boxenv
+# boxdynamics
 
 ## Description
-__boxenv__ is a tool for the training of RL agents. It allows you to create two dimensional continuous observation and action spaces enviroments to train your agent.
+__boxdynamics__ is a tool for the training of RL agents. It allows you to create two dimensional continuous observation and action spaces enviroments to train your agent.
 
 ## Prerequisites
 - Python version
@@ -11,11 +11,11 @@ __boxenv__ is a tool for the training of RL agents. It allows you to create two 
 ## Quick start
 - Clone repository
 
-        git clone https://github.com/dontqwerty/boxenv.git
+        git clone https://github.com/dontqwerty/boxdynamics.git
 
 - Enter the folder
 
-        cd boxenv
+        cd boxdynamics
 
 - Create and activate a virtual enviroment (optional)
 
